@@ -1,9 +1,9 @@
-function [x, sys] = rb_cpfas(y, t, model, M, par)
+function [x, sys] = rb_cpfas(y, t, model, xt, M, par)
 % Rao–Blackwellized conditional particle filter for mixed CLGSS models
 %
 % SYNOPSIS
 %   x = rb_cpfas(y, t, model)
-%   [x, sys] = rb_cpfas(y, t, model, M, par)
+%   [x, sys] = rb_cpfas(y, t, model, xt, M, par)
 % 
 % DESCRIPTION
 %   Rao-Blackwellized particle Gibbs with ancestor sampling (conditional
@@ -41,13 +41,14 @@ function [x, sys] = rb_cpfas(y, t, model, M, par)
 %               Ql, Qnl        
 %               py      Struct describing the likelihood
 %
+%   xt      Seed trajectory (Nx*N+1); calculated using a regular PF if 
+%           omitted.
+%
 %   M       No. of particles to use in the particle filter (optional, 
 %           default: 100)
 %
 %   par     Struct containing additional parameters:
 %
-%               xt      Seed trajectory (Nx*N+1); calculated using a
-%                       regular PF if omitted.
 %               Nbar    No. of samples into the future to consider when
 %                       calculating the ancestor weights. By default, the
 %                       complete future trajectory is considered.
@@ -65,7 +66,7 @@ function [x, sys] = rb_cpfas(y, t, model, M, par)
 %   cpfas
 %
 % REFERENCES
-%   [1] R. Hostettler, S. S?rkk?, S. J. Godsill, "Rao-Blackwellized
+%   [1] R. Hostettler, S. S?rkk?, S. J. Godsill, "Rao–Blackwellized
 %       particle MCMC for parameter estimation in spatio-temporal Gaussian
 %       processes," 2017, to appear.
 %
@@ -79,6 +80,7 @@ function [x, sys] = rb_cpfas(y, t, model, M, par)
 %   * The initialize function should probably be replaced by a RBPF or
 %     something.
 %   * Should we return the smoothed covariance as well?
+%   * Not sure if we actually need sys.
 
 % NOTES
 %   * Assumes implicitly that G, H, and Q don't depend on s[n-1] which
@@ -87,11 +89,11 @@ function [x, sys] = rb_cpfas(y, t, model, M, par)
 %     'draw_samples'.
 
     %% Defaults
-    narginchk(3, 5);
-    if nargin < 4 || isempty(M)
+    narginchk(3, 6);
+    if nargin < 5 || isempty(M)
         M = 100;
     end
-    if nargin < 5
+    if nargin < 6
         par = [];
     end
     
@@ -100,7 +102,6 @@ function [x, sys] = rb_cpfas(y, t, model, M, par)
         t = 0:N;
     end
     def = struct( ...
-        'xt', [], ...  % Seed trajectory
         'Nbar', N ...  % Truncation length for calculating the ancestor weigths; 
     );
     par = parchk(par, def);
@@ -122,8 +123,7 @@ function [x, sys] = rb_cpfas(y, t, model, M, par)
     Pf = zeros(Nz, Nz, N);      % Covariances for linear states
     
     %% Seed Trajectory
-    xt = par.xt;
-    if isempty(xt) || sum(sum(xt)) == 0
+    if nargin < 4 || isempty(xt) || sum(sum(xt)) == 0
         xt = initialize(y, t, model, M);
     end
     sbar = xt(in, :);

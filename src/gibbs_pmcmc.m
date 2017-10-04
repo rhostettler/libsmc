@@ -1,57 +1,82 @@
-function [x, theta, sys] = gibbs_pmcmc(y, t, create_model, K, theta0, par)
-% Particle Gibbs Markov chain Monte Carlo
+function [x, theta] = gibbs_pmcmc(y, t, model, theta0, K, par)
+% Particle Gibbs Markov chain Monte Carlo sampler
 %
 % SYNOPSIS
 %   [x, theta] = gibbs_pmcmc(y, t, model, K, theta0, par)
 %
 % DESCRIPTION
-%   Particle Markov chain Monte Carlo-based 
+%   Particle Markov chain Monte Carlo Gibbs sampler for generating samples
+%   from the posterior distribution p(theta, x[0:N] | y[1:N]). The sampler
+%   uses the Gibbs approach, which samples each parameter condtionally on
+%   the others in turn. In particular, the method first samples from
+%
+%       x[0:N] ~ p(x[0:N] | theta, y[1:N])
+%
+%   and then from
+%
+%       theta ~ p(theta | x[0:N], y[1:N]).
+%
+%   Sampling is achieved by calling two user-defined functions (supplied as
+%   fields in the 'par' argument):
+%
+%       1. sample_states(), and
+%       2. sample_parameters().
+%
+%   If the former is not specified, cpfas is used by default and if the
+%   latter is not specified, no parameters are sampled.
 %   
 % PARAMETERS
 %   y       Measurement data matrix Ny*N
 %
 %   t       Time vector (default: 1:N)
 %
-%   model   Function handle to construct the model; takes one argument, the
-%           parameters theta = [theta_f, theta_g]
+%   model(theta)
+%           Function handle to construct the model, takes the parameter
+%           values theta as an argument.
 %
 %   K       No. of MCMC samples to generate (optional, default: 100)
 %
-%   theta0
-%           Initial guess of the model parameters
+%   theta0  Initial guess of the model parameters
 %
-%   par     Struct of additional parameters:
+%   par     Additional parameters:
 %
-%               Kburnin         No. of burn-in samples (default: 0)
-%               Kmixing         No. of samples for improving the mixing
-%                               default: 1)
-%               M                   No. of samples to use in the particle
-%                                   filter (default: 100)
-%               sample_states       Function to sample the states (default:
-%                                   cpfas)
-%               sample_parameters   Function to sample the model parameters
-%                                   (default: []).
+%               Kburnin No. of burn-in samples (default: 0)
 %
-%           The interface for 'sample_states' is
+%               Kmixing No. of samples for improving the mixing
+%                       (default: 1)
 %
-%               sample_states(y, t, model, M).
+%               x = sample_states(y, t, x, theta, model)
+%                       Function to sample the states (default: cpfas).
 %
-%           The interface for 'sample_theta_f' and 'sample_theta_y' is
+%               [theta, state] = sample_parameters(y, t, x, theta, model, state)
+%                       Function to sample the model parameters (default:
+%                       []). In addition to the newly sampled parameters,
+%                       the function may also return a state variable which
+%                       stores the sampler's state.
 %
-%               sample_theta_X()
+%               show_progress(p, x, theta)
+%                       Function to display or otherwise illustrate the
+%                       progress (default: []). The parameters are the
+%                       progress of the sampling in [0,1], and the so-far
+%                       sampled trajectories and parameters.
 % 
 % RETURNS
-%   x       Trajectory samples
+%   x       Trajectory samples (Nx*N*K)
 %
-%   theta   Parameter samples
+%   theta   Parameter samples (Ntheta*K)
 %
 % SEE ALSO
 %   cpfas, rb_cpfas
 % 
 % REFERENCES
-%   [1] our new paper
+%   [1] C. Andrieu, A. Doucet, and R. Holenstein, "Particle Markov chain
+%       Monte Carlo methods," Journal of the Royal Statistical Society: 
+%       Series B (Statistical Methodology), vol. 72, no. 3, pp. 269–342, 
+%       2010.
 %
-%   [2] pgas paper
+%   [2] F. Lindsten, M. I. Jordan, and T. B. Schön, "Particle Gibbs with
+%       ancestor sampling," Journal of Machine Learning Research, vol. 15, 
+%       pp. 2145–2184, 2014.
 %
 % VERSION
 %   2017-10-04
@@ -60,39 +85,15 @@ function [x, theta, sys] = gibbs_pmcmc(y, t, create_model, K, theta0, par)
 %   Roland Hostettler <roland.hostettler@aalto.fi>
 
 % TODO:
-%   * Documentation update (complete the section on the parameter sampling
-%     functions and mention that they are given the complete sample
-%     trajectories)
-%   * Clean up internal interfaces and parameter handling. A super mess
-%     now.
-%   * Lots of dirty hacks here; need to clean it up and make generic
 %   * See the various TODO's throughout the code.
-%   * Make generic, i.e. move the sample_trajectory function out of the
-%     general sampler as well
-%   * This could potentially be made quite general -- Call it something
-%     like gibbs_pmcmc that takes a single function for sampling the
-%     parameters (par.sample_theta) and one for sampling the states
-%     (par.sample_states). Then we can use it virtually for everything.
-%     Make it so that the state and parameter sampling functions don't take
-%     a 'par' structure here so we can clean up the parameters structure as
-%     well and have no confilicting fields.
-%   * Include an output function that is called upon every iteration for
-%     progress monitoring
-
-    % TODO: Make this some kind of switch or rather a parameter that we
-    % supply. This should make the hole sampler really flexible; even
-    % better: We take the state-sampling function from the parameters as
-    % well!
-    rb = 1;
 
     %% Defaults
-    % TODO: Needs to be updated once the interface is finalized
     narginchk(3, 6);
-    if nargin < 4 || isempty(K)
-        K = 10;
-    end
-    if nargin < 5
+    if nargin < 4
         theta0 = [];
+    end
+    if nargin < 5 || isempty(K)
+        K = 10;
     end
     if nargin < 6
         par = [];
@@ -102,9 +103,9 @@ function [x, theta, sys] = gibbs_pmcmc(y, t, create_model, K, theta0, par)
     def = struct(...
         'Kburnin', 0, ...
         'Kmixing', 1, ...
-        'M', 100, ...
-        'sample_states', ...
-        'sample_parameters', [] ...
+        'sample_states', @(y, t, x, theta, model) cpfas(y, t, model, x), ...
+        'sample_parameters', [], ...
+        'show_progress', [] ...
     );
     par = parchk(par, def);
     
@@ -113,67 +114,52 @@ function [x, theta, sys] = gibbs_pmcmc(y, t, create_model, K, theta0, par)
 
     %% Initialize
     % State of Metropolis-within-Gibbs sampler
-    % TODO: This is not handled very nicely.
     state = [];
     
     % Preallocate
-    model = create_model([theta0_f; theta0_y]);
-    Nx = size(model.px0.rand(1), 1);
+    tmp = model(theta0);
+    Nx = size(tmp.px0.rand(1), 1);
     N = size(y, 2);
     Ntheta = size(theta0, 1);
-    theta = [theta0_f, zeros(Ntheta, Kmcmc)];
-    if rb
-        x = zeros(Nx, N+1, Kmcmc);
-    else
-        x = zeros(Nx, N, Kmcmc);
-    end
+    theta = [theta0, zeros(Ntheta, Kmcmc)];
+    x = zeros(Nx, N+1, Kmcmc);
 
     %% MCMC sampling
     for k = 2:Kmcmc+1
         % Sample trajectory
-        % TODO: Take state sampling function from par
-        if rb
-        x(:, :, k) = sample_states(y, x(:, :, k-1), t, theta_f(:, k-1), theta_y(:, k-1), create_model, par);
+        if ~isempty(par.sample_states)
+            x(:, :, k) = par.sample_states(y, t, x(:, :, k-1), theta(:, k-1), model(theta));
         else
-        x(:, :, k) = sample_trajectory(y, x(:, :, k-1), t, theta_f(:, k-1), theta_y(:, k-1), create_model, par);
+            warning('No state sampling method provided, are you sure you want to use PMCMC?');
         end
         
         % Sample parameters
-        if ~isempty(par.sample_parameters)            
-            % TODO: Move out of function somehow
-            tt = [0, t];
-            [theta(:, k), state] = par.sample_theta_f(y, x(:, :, k), tt, theta_f(:, 1:k-1), theta_y(:, 1:k-1), create_model, state, par);
+        if ~isempty(par.sample_parameters)
+            % TODO: Update the interface as it is written in the
+            % documentation
+            [theta(:, k), state] = par.sample_parameters(y, tt, x(:, :, k), theta(:, 1:k-1), model, state, par);
+        end
+        
+        % Show progress
+        if ~isempty(par.show_progress)
+            par.show_progress((k-1)/Kmcmc, x(:, :, 1:k), theta(:, 1:k));
         end
     end
     
     %% Post-processing
     % Strip initial values, burn-in, and mixing
-    if rb
-        x = x(:, 2:N+1, par.Kburnin+2:par.Kmixing:Kmcmc+1);
-    else
-        x = x(:, :, par.Kburnin+2:par.Kmixing:Kmcmc+1);
-    end
+    % TODO: Do we really want to strip the initial value?
+    x = x(:, 2:N+1, par.Kburnin+2:par.Kmixing:Kmcmc+1);
     if ~isempty(theta)
         theta = theta(:, par.Kburnin+2:par.Kmixing:Kmcmc+1);
     end
 end
 
 %% Draws a new state trajectory
-% TODO: This can be moved out once we take the filter from the parameters;
-%       this requires a slight update of cpfas and (?) to include the
-%       initial state. While talking about that... CPFAS should probably be
-%       renamed to something else; maybe just pgas
-function x = sample_states(y, x, t, theta_f, theta_y, create_model, par)
-    % Crate a new model with updated parameters, set seed trajectory, and
-    % sample a trajectory
-    model = create_model([theta_f; theta_y]);
-    par.xt = x;
-    x = gprbpgas(y, t, model, par.M, par);
-end
-
-%% Draws a new state trajectory
-% TODO: This is the old code, non-Rao-Blackwellized; will be removed sooner
-% or later.
+% TODO: cpfas needs to be improved as follows to be directly compatible
+%   * cpfas does not return the initial state 
+%   * cpfas returns all trajectories, but we need to return only one
+%   * We need to fix those things before removing this function
 function x = sample_trajectory(y, x, t, theta_f, theta_y, create_model, par)
     % Crate a new model with updated parameters and set seed trajectory
     model = create_model([theta_f; theta_y]);
