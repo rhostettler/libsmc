@@ -84,9 +84,6 @@ function [x, theta] = gibbs_pmcmc(y, t, model, theta0, K, par)
 % AUTHOR
 %   Roland Hostettler <roland.hostettler@aalto.fi>
 
-% TODO:
-%   * See the various TODO's throughout the code.
-
     %% Defaults
     narginchk(3, 6);
     if nargin < 4
@@ -135,9 +132,7 @@ function [x, theta] = gibbs_pmcmc(y, t, model, theta0, K, par)
         
         % Sample parameters
         if ~isempty(par.sample_parameters)
-            % TODO: Update the interface as it is written in the
-            % documentation
-            [theta(:, k), state] = par.sample_parameters(y, tt, x(:, :, k), theta(:, 1:k-1), model, state, par);
+            [theta(:, k), state] = par.sample_parameters(y, t, x(:, :, k), theta(:, 1:k-1), model, state);
         end
         
         % Show progress
@@ -148,26 +143,8 @@ function [x, theta] = gibbs_pmcmc(y, t, model, theta0, K, par)
     
     %% Post-processing
     % Strip initial values, burn-in, and mixing
-    % TODO: Do we really want to strip the initial value?
     x = x(:, 2:N+1, par.Kburnin+2:par.Kmixing:Kmcmc+1);
     if ~isempty(theta)
         theta = theta(:, par.Kburnin+2:par.Kmixing:Kmcmc+1);
     end
-end
-
-%% Draws a new state trajectory
-% TODO: cpfas needs to be improved as follows to be directly compatible
-%   * cpfas does not return the initial state 
-%   * cpfas returns all trajectories, but we need to return only one
-%   * We need to fix those things before removing this function
-function x = sample_trajectory(y, x, t, theta_f, theta_y, create_model, par)
-    % Crate a new model with updated parameters and set seed trajectory
-    model = create_model([theta_f; theta_y]);
-    par.xt = x;
-    
-    % Run CPF & draw trajectory
-    [~, ~, sys] = cpfas(y, t, model, [], par.M, par);    
-    beta = sysresample(sys.wf);
-    j = beta(randi(par.M, 1));
-    x = squeeze(sys.xf(:, j, :));
 end
