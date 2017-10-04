@@ -1,8 +1,8 @@
-function [x, theta_f, theta_y] = gibbs_gp_learning(y, t, create_model, K, theta0_f, theta0_y, par)
-% Particle Gibbs learning of state-space systems
+function [x, theta, sys] = gibbs_pmcmc(y, t, create_model, K, theta0, par)
+% Particle Gibbs Markov chain Monte Carlo
 %
 % SYNOPSIS
-%   [x, theta_f, theta_g] = gibbs_ss_learning(y, t, model, K, theta0_f, theta0_g, par)
+%   [x, theta] = gibbs_pmcmc(y, t, model, K, theta0, par)
 %
 % DESCRIPTION
 %   Particle Markov chain Monte Carlo-based 
@@ -17,25 +17,20 @@ function [x, theta_f, theta_y] = gibbs_gp_learning(y, t, create_model, K, theta0
 %
 %   K       No. of MCMC samples to generate (optional, default: 100)
 %
-%   theta0_f
-%           Initial guess of the dynamic model's parameters
-%
-%   theta0_g
-%           Inigual guess of the likelihood's parameters
+%   theta0
+%           Initial guess of the model parameters
 %
 %   par     Struct of additional parameters:
 %
 %               Kburnin         No. of burn-in samples (default: 0)
 %               Kmixing         No. of samples for improving the mixing
 %                               default: 1)
-%               M               No. of samples to use in the particle
-%                               filter (default: 100)
-%               sample_states   Function to sample the states (default:
-%                               cpfas)
-%               sample_theta_f  Function to sample the dynamic model's
-%                               parameters (default: []).
-%               sample_theta_y  Function to sample the likelihood
-%                               parameters (default: []).
+%               M                   No. of samples to use in the particle
+%                                   filter (default: 100)
+%               sample_states       Function to sample the states (default:
+%                                   cpfas)
+%               sample_parameters   Function to sample the model parameters
+%                                   (default: []).
 %
 %           The interface for 'sample_states' is
 %
@@ -46,14 +41,12 @@ function [x, theta_f, theta_y] = gibbs_gp_learning(y, t, create_model, K, theta0
 %               sample_theta_X()
 % 
 % RETURNS
-%   x       Samples of the trajectory
+%   x       Trajectory samples
 %
-%   theta_f Samples of the dynamic model's parameters
-%
-%   theta_y Samples of the likelihood's parameters
+%   theta   Parameter samples
 %
 % SEE ALSO
-%   cpfas, gprbpgas
+%   cpfas, rb_cpfas
 % 
 % REFERENCES
 %   [1] our new paper
@@ -61,7 +54,7 @@ function [x, theta_f, theta_y] = gibbs_gp_learning(y, t, create_model, K, theta0
 %   [2] pgas paper
 %
 % VERSION
-%   2017-05-24
+%   2017-10-04
 %
 % AUTHOR
 %   Roland Hostettler <roland.hostettler@aalto.fi>
@@ -94,17 +87,14 @@ function [x, theta_f, theta_y] = gibbs_gp_learning(y, t, create_model, K, theta0
 
     %% Defaults
     % TODO: Needs to be updated once the interface is finalized
-    narginchk(3, 7);
+    narginchk(3, 6);
     if nargin < 4 || isempty(K)
         K = 10;
     end
     if nargin < 5
-        theta0_f = [];
+        theta0 = [];
     end
     if nargin < 6
-        theta0_y = [];
-    end
-    if nargin < 7
         par = [];
     end
     
@@ -113,8 +103,8 @@ function [x, theta_f, theta_y] = gibbs_gp_learning(y, t, create_model, K, theta0
         'Kburnin', 0, ...
         'Kmixing', 1, ...
         'M', 100, ...
-        'sample_theta_f', [], ...
-        'sample_theta_y', [] ...
+        'sample_states', ...
+        'sample_parameters', [] ...
     );
     par = parchk(par, def);
     
@@ -124,15 +114,14 @@ function [x, theta_f, theta_y] = gibbs_gp_learning(y, t, create_model, K, theta0
     %% Initialize
     % State of Metropolis-within-Gibbs sampler
     % TODO: This is not handled very nicely.
-    state_f = [];
+    state = [];
     
     % Preallocate
     model = create_model([theta0_f; theta0_y]);
     Nx = size(model.px0.rand(1), 1);
     N = size(y, 2);
-    Ntheta = size(theta0_f, 1);
-    theta_f = [theta0_f, zeros(Ntheta, Kmcmc)];
-    theta_y = [theta0_y, zeros(size(theta0_y, 1), Kmcmc)];
+    Ntheta = size(theta0, 1);
+    theta = [theta0_f, zeros(Ntheta, Kmcmc)];
     if rb
         x = zeros(Nx, N+1, Kmcmc);
     else
@@ -142,23 +131,18 @@ function [x, theta_f, theta_y] = gibbs_gp_learning(y, t, create_model, K, theta0
     %% MCMC sampling
     for k = 2:Kmcmc+1
         % Sample trajectory
+        % TODO: Take state sampling function from par
         if rb
         x(:, :, k) = sample_states(y, x(:, :, k-1), t, theta_f(:, k-1), theta_y(:, k-1), create_model, par);
         else
         x(:, :, k) = sample_trajectory(y, x(:, :, k-1), t, theta_f(:, k-1), theta_y(:, k-1), create_model, par);
         end
         
-        % Sample GP parameters (Metropolis-within-Gibbs)
-        if ~isempty(par.sample_theta_f)
-            
+        % Sample parameters
+        if ~isempty(par.sample_parameters)            
             % TODO: Move out of function somehow
             tt = [0, t];
-            [theta_f(:, k), state_f] = par.sample_theta_f(y, x(:, :, k), tt, theta_f(:, 1:k-1), theta_y(:, 1:k-1), create_model, state_f, par);
-        end
-        
-        % Sample likelihood parameters
-        if ~isempty(par.sample_theta_y)
-            theta_y(:, k) = par.sample_theta_y(y, x(:, :, k), t, theta_f(:, 1:k), theta_y(:, 1:k-1), create_model);
+            [theta(:, k), state] = par.sample_theta_f(y, x(:, :, k), tt, theta_f(:, 1:k-1), theta_y(:, 1:k-1), create_model, state, par);
         end
     end
     
@@ -169,11 +153,8 @@ function [x, theta_f, theta_y] = gibbs_gp_learning(y, t, create_model, K, theta0
     else
         x = x(:, :, par.Kburnin+2:par.Kmixing:Kmcmc+1);
     end
-    if ~isempty(theta_f)
-        theta_f = theta_f(:, par.Kburnin+2:par.Kmixing:Kmcmc+1);
-    end
-    if ~isempty(theta_y)
-        theta_y = theta_y(:, par.Kburnin+2:par.Kmixing:Kmcmc+1);
+    if ~isempty(theta)
+        theta = theta(:, par.Kburnin+2:par.Kmixing:Kmcmc+1);
     end
 end
 

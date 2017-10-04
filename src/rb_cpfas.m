@@ -1,26 +1,28 @@
-function [x, sys] = gprbpgas(y, t, model, M, par)
-% Particle Gibbs w/ ancestor sampling for latent GP state-space models
+function [x, sys] = rb_cpfas(y, t, model, M, par)
+% Rao–Blackwellized conditional particle filter for mixed CLGSS models
 %
 % SYNOPSIS
-%   x = gprbpgas(y, t, model)
-%   [x, sys] = gprbpgas(y, t, model, M, par)
+%   x = rb_cpfas(y, t, model)
+%   [x, sys] = rb_cpfas(y, t, model, M, par)
 % 
 % DESCRIPTION
-%   Rao-Blackwellized particle Gibbs with ancestor sampling for GP models
-%   of the form
+%   Rao-Blackwellized particle Gibbs with ancestor sampling (conditional
+%   particle filter) for mixed conditionally linear Gaussian state space
+%   models of the form
 %
 %       s[n] = g(s[n-1]) + G(s[n-1]) z[n-1] + q^s[n]
 %       z[n] = h(s[n-1]) + H(s[n-1]) z[n-1] + q^z[n]
 %       y[n] ~ p(y[n] | s[n])
+%       x[0] ~ N(m[0], P[0])
 %
-%   where [q^s[n]; q^z[n]] ~?N(0, Q(s[n-1])).
+%   where [q^s[n]; q^z[n]] ~ N(0, Q(s[n-1])).
 %
-%   Note that the likelihood is independent of z[n] and of arbitrary form.
-%   See [1] for details.
+%   Note that the likelihood is assumed to be independent of z[n] and of 
+%   arbitrary form, see [1] for details.
 %
-%   Note that in order to speed up the computations, it is assumed that G
-%   and H don't depend on s[n-1] and and g and h return vectors if s[n-1]
-%   is a vector.
+%   NOTE: In order to speed up the computations, it is assumed that G and H
+%   don't depend on s[n-1] and and g and h return vectors if s[n-1] is a 
+%   vector.
 %
 % PARAMETERS
 %   y       Measurement data matrix (Ny x N)
