@@ -1,5 +1,5 @@
 function [x, sys] = rb_cpfas(y, t, model, xt, M, par)
-% Rao–Blackwellized conditional particle filter for mixed CLGSS models
+% Rao-Blackwellized conditional particle filter for mixed CLGSS models
 %
 % SYNOPSIS
 %   x = rb_cpfas(y, t, model)
@@ -66,7 +66,7 @@ function [x, sys] = rb_cpfas(y, t, model, xt, M, par)
 %   cpfas
 %
 % REFERENCES
-%   [1] R. Hostettler, S. S?rkk?, S. J. Godsill, "Rao–Blackwellized
+%   [1] R. Hostettler, S. S?rkk?, S. J. Godsill, "Rao???Blackwellized
 %       particle MCMC for parameter estimation in spatio-temporal Gaussian
 %       processes," 2017, to appear.
 %
@@ -81,6 +81,10 @@ function [x, sys] = rb_cpfas(y, t, model, xt, M, par)
 %     something.
 %   * Should we return the smoothed covariance as well?
 %   * Not sure if we actually need sys.
+%   * Simplify the different linear parts in accordance with the new
+%     article.
+%   * Rewrite. Make such that it only returns 's' (also update the
+%     notation), and both z and P are returned in sys.
 
 % NOTES
 %   * Assumes implicitly that G, H, and Q don't depend on s[n-1] which
@@ -110,7 +114,7 @@ function [x, sys] = rb_cpfas(y, t, model, xt, M, par)
     in = model.in;
     il = model.il;
     
-    % Dimensions state dimensions and data length
+    % State dimensions and data length
     Ns = length(in);
     Nz = length(il);
     Nx = Ns+Nz;
@@ -118,7 +122,6 @@ function [x, sys] = rb_cpfas(y, t, model, xt, M, par)
     
     % Stores the full trajectories
     alphaf = zeros(1, M, N);    % Ancestor indices
-    wf = zeros(1, M, N);        % Particle weights
     xf = zeros(Nx, M, N);       % Trajectories
     Pf = zeros(Nz, Nz, N);      % Covariances for linear states
     
@@ -127,6 +130,17 @@ function [x, sys] = rb_cpfas(y, t, model, xt, M, par)
         xt = initialize(y, t, model, M);
     end
     sbar = xt(in, :);
+        
+    %% Prepare Particle System
+    sys = repmat( ...
+        struct( ...
+            'xf', zeros(Nx, M), ...
+            'wf', zeros(1, M), ...
+            'af', zeros(1, M), ...
+            'Pf', zeros(Nx, Nx, M) ...
+        ), ...
+        [N, 1] ...
+    );
     
     %% Initialize
     % Prepend t_0 and no measurement
@@ -144,10 +158,10 @@ function [x, sys] = rb_cpfas(y, t, model, xt, M, par)
     lw = log(1/M)*ones(1, M);
     
     % Store initial
-    wf(:, :, 1) = w;
-    xf(in, :, 1) = s;
-    xf(il, :, 1) = z;
-    Pf(:, :, 1) = P;
+    sys(1).wf = w;
+    sys(1).xf(in, :) = s;
+    sys(1).xf(il, :) = z;
+    sys(1).Pf = P;
     
     %% Process Data
     for n = 2:N
@@ -184,37 +198,23 @@ function [x, sys] = rb_cpfas(y, t, model, xt, M, par)
         end
         
         %% Store New Samples & Ancestor Indices
-        alphaf(:, :, n) = alpha;
-        wf(:, :, n) = w;
-        xf(in, :, n) = s;
-        xf(il, :, n) = z;
-        Pf(:, :, n) = P;
+        sys(n).xf(in, :) = s;
+        sys(n).xf(il, :) = z;
+        sys(n).wf = w;
+        sys(n).af = alpha;
+        sys(n).Pf = P;
     end
     
-    %% Store Particle System
-    if nargout >= 2
-        sys = struct();
-        sys.x = xf;
-        sys.w = wf;
-        sys.P = Pf;
-    end
-    
-    %% Draw Trajectory
-    % Create full trajectories by walking down the ancestral tree backwards
-    % in time to get the correct particle lineage.
-    alpha = 1:M;
-    xf(:, :, N) = xf(:, :, N);
-    for n = N-1:-1:1
-        xf(:, :, n) = xf(:, alphaf(:, alpha, n+1), n);
-        alpha = alphaf(:, alpha, n+1);
-    end
-        
+    %% Draw Trajectory    
     % Draw a trajectory
     beta = sysresample(w);
     j = beta(randi(M, 1));
-    x = squeeze(xf(:, j, :));
+    sys = calculate_particle_lineages(sys, j);
+    x = cat(2, sys.xf);
     
     %% Smooth Linear States
+    % TODO: This is boken too; in particular saving it to sys
+%    [x(il, :), sys.Pz_s] = smooth_linear(x, Pf, t, model);
     x(il, :) = smooth_linear(x, Pf, t, model);
 end
 
@@ -301,7 +301,7 @@ function x = initialize(y, t, model, M)
 end
 
 %% RTS Smoothing
-function [zs, Ps] = smooth_linear(x, P, t, model)
+function [z_s, P_s] = smooth_linear(x, P, t, model)
 % Smoothing of linear states conditional on a complete trajectory of
 % non-linear states.
 % 
@@ -323,26 +323,51 @@ function [zs, Ps] = smooth_linear(x, P, t, model)
     
     % Preallocate
     [Nz, N] = size(z);
-    zs = zeros(Nz, N);
-    Ps = zeros(Nz, Nz, N);
+    Ns = size(s, 1);
+    z_s = zeros(Nz, N);
+    P_s = zeros(Nz, Nz, N);
     
     % Initialize backward pass
-    zs(:, N) = z(:, N);
-    Ps(:, :, N) = P(:, :, N);
+    z_s(:, N) = z(:, N);
+    P_s(:, :, N) = P(:, :, N);
     
     %% Backward Iteration
     for n = N-1:-1:1
         % Prediction from n to n+1
+        g = model.fn(s(:, n), t(n+1));
+        G = model.Fn(s(:, n), t(n+1));
         h = model.fl(s(:, n), t(n+1));
         H = model.Fl(s(:, n), t(n+1));
-        Qz = model.Ql(s(:, n), t(n+1));
+        msp = g + G*z(:, n);
+        mzp = h + H*z(:, n);
+        mp = [msp; mzp];
         
+        Qz = model.Ql(s(:, n), t(n+1));
+        Qs = model.Qn(s(:, n), t(n+1));
+        Qsz = model.Qnl(s(:, n), t(n+1));
+        
+        Pps = G*P(:, :, n)*G' + Qs;
+        Ppz = H*P(:, :, n)*H' + Qz;
+        Ppsz = G*P(:, :, n)*H' + Qsz;
+        Pp = [
+              Pps, Ppsz;
+            Ppsz',  Ppz;
+        ];
+        Ptmp = [
+            zeros(Ns, Ns), zeros(Ns, Nz); 
+            zeros(Nz, Ns), P_s(:, :, n+1);
+        ];
+
         % RTS update
-        zp = h + H*z(:, n);
-        S = Qz + H*P(:, :, n)*H';
-        L = P(:, :, n)*H'/S;
-        zs(:, n) = z(:, n) + L*(zs(:, n+1) - zp);
-        Ps(:, :, n) = P(:, :, n) + L*(Ps(:, :, n+1) - S)*L';
+        L = P(:, :, n)*[G' H']/Pp;
+%        Lz = P(:, :, n)*H'/Pp;
+%        L = [Ls Lz];
+        z_s(:, n) = z(:, n) + L*([s(:, n+1); z_s(:, n+1)] - mp);
+        P_s(:, :, n) = P(:, :, n) + L*(Ptmp - Pp)*L';
+%        S = Qz + H*P(:, :, n)*H';
+%        L = P(:, :, n)*H'/S;
+%        z_s(:, n) = z(:, n) + L*(z_s(:, n+1) - mzp);
+%        P_s(:, :, n) = P(:, :, n) + L*(P_s(:, :, n+1) - S)*L';
     end
 end
 
