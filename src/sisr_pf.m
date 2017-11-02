@@ -51,9 +51,7 @@ function [xhat, sys] = sisr_pf(y, t, model, q, M, par)
 %   * Add a field to the parameters that can be used to calculate custom
 %     'integrals'
 
-    %% Preliminary Checks
-    % Check that we get the correct no. of parameters and a well-defined
-    % model so that we can detect model problems already here.
+    %% Defaults
     narginchk(4, 6);
     if nargin < 5 || isempty(M)
         M = 100;
@@ -61,34 +59,38 @@ function [xhat, sys] = sisr_pf(y, t, model, q, M, par)
     if nargin < 6
         par = [];
     end
-    
-    % Default parameters
     def = struct(...
         'resample', @resample_ess ... % Resampling function
     );
     par = parchk(par, def);
-    [px, py, px0] = modelchk(model);
+    modelchk(model);
 
     %% Initialize
-    x = px0.rand(M);
+    x = model.px0.rand(M);
     lw = log(1/M)*ones(1, M);
     
-    % TODO: Add initial samples to system, increase N by one, change loop
-    % form 2:N
+    % Prepend a non-measurement and initial time (zero)
+    Ny = size(y, 1);
+    y = [NaN*ones(Ny, 1), y];
+    t = [0, t];
     
     %% Preallocate
     Nx = size(x, 1);
     N = length(t);
     if nargout >= 2
         sys = initialize_sys(N, Nx, M);
+        sys(1).x = x;
+        sys(1).w = exp(lw);
+        sys(1).alpha = 1:M;
+        sys(1).r = false;
         return_sys = true;
     end
-    xhat = zeros(Nx, N);
+    xhat = zeros(Nx, N-1);
     
     %% Process Data
-    for n = 1:N
+    for n = 2:N
         %% Resample
-        [alpha, lw, r] = par.resample(lw, par);
+        [alpha, lw, r] = par.resample(lw);
 
         %% Draw Samples
         xp = sample_q(y(:, n), x(:, alpha), t(n), q);
@@ -102,8 +104,11 @@ function [xhat, sys] = sisr_pf(y, t, model, q, M, par)
         lw = log(w);
         x = xp;
         
-        %% Point Estimates
-        xhat(:, n) = x*w';
+        %% Point Estimate(s)
+        % Note: We don't have a state estimate for the initial state (in
+        % the filtered version, anyway), thus we save the MMSE estimate in
+        % n-1.
+        xhat(:, n-1) = x*w';
 
         %% Store
         if return_sys
