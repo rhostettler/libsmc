@@ -47,9 +47,7 @@ function [xhat, sys] = sisr_pf(y, t, model, q, M, par)
 %   2017-11-02 -- Roland Hostettler <roland.hostettler@aalto.fi>
 
 % TODO:
-%   * Replace weighing function (see Wiener-apfs)
-%   * Use global calculate_incremental_weights() instead
-%   * Add possibility of adding output function
+%   * Add possibility of adding output function (see gibbs_pmcmc())
 %   * Add a field to the parameters that can be used to calculate custom
 %     'integrals'
 
@@ -66,8 +64,7 @@ function [xhat, sys] = sisr_pf(y, t, model, q, M, par)
     
     % Default parameters
     def = struct(...
-        'resample', @resample_ess, ... % Resampling function
-        'bootstrap', false ...
+        'resample', @resample_ess ... % Resampling function
     );
     par = parchk(par, def);
     [px, py, px0] = modelchk(model);
@@ -94,10 +91,10 @@ function [xhat, sys] = sisr_pf(y, t, model, q, M, par)
         [alpha, lw, r] = par.resample(lw, par);
 
         %% Draw Samples
-        xp = draw_samples(y(:, n), x(:, alpha), t(n), q);
+        xp = sample_q(y(:, n), x(:, alpha), t(n), q);
         
         %% Weights
-        [~, lv] = calculate_incremental_weights(y(:, n), xp, x, t(n), px, py, q, par);
+        lv = calculate_incremental_weights(y(:, n), xp, x, t(n), model, q);
         lw = lw+lv;
         lw = lw-max(lw);
         w = exp(lw);
@@ -121,51 +118,4 @@ function [xhat, sys] = sisr_pf(y, t, model, q, M, par)
     if return_sys
         sys = calculate_particle_lineages(sys, 1:M);
     end
-end
-
-%% New Samples
-% function xp = draw_samples(y, x, t, q)
-%     M = size(x, 2);
-%     if q.fast
-%         xp = q.rand(y*ones(1, M), x, t);
-%     else
-%         xp = zeros(size(x));
-%         for m = 1:M
-%             xp(:, m) = q.rand(y, x(:, m), t);
-%         end
-%     end
-% end
-
-%% Incremental Particle Weight
-function [v, lv] = calculate_incremental_weights(y, xp, x, t, px, py, q, par)
-    M = size(xp, 2);
-    if par.bootstrap
-        if py.fast
-            lv = py.logpdf(y*ones(1, M), xp, t);
-        else
-            lv = zeros(1, M);
-            for m = 1:M
-                lv(m) = py.logpdf(y, xp(:, m), t);
-            end
-        end
-    else
-        if px.fast && py.fast && q.fast
-            lv = ( ...
-                py.logpdf(y*ones(1, M), xp, t) ...
-                + px.logpdf(xp, x, t) ...
-                - q.logpdf(xp, y*ones(1, M), x, t) ...
-            );
-        else
-            M = size(xp, 2);
-            lv = zeros(1, M);
-            for m = 1:M
-                lv(m) = ( ...
-                    py.logpdf(y, xp(:, m), t) ...
-                    + px.logpdf(xp(:, m), x(:, m), t) ...
-                    - q.logpdf(xp(:, m), y, x(:, m), t) ...
-                );
-            end
-        end
-    end
-    v = exp(lv-max(lv));
 end
