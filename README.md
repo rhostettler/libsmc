@@ -8,9 +8,17 @@ This is a Matlab library implementing sequential Monte Carlo (aka particle filte
 
 Each of the structures is described in turn below, followed by a list of implemented algorithms and standard models included in the toolbox. The interface of each algorithm is documented in the corresponding Matlab help page.
 
+Some general notation used throughout this file:
 
-# Data Structures
-## Model Definition
+* `N`: Number of datapoints,
+* `Nx`: State dimension,
+* `Ny`: Measurement dimension,
+* `M`: Number of samples (particles),
+* `K`: Number of MCMC samples.
+
+
+## Data Structures
+### Model Definition
 The `model` structure defines a probabilistic model in terms of its state transition density, likelihood, initial state density, and possible static parameters. A model **must** include the following fields:
 
 * `model.px0`: Initial state pdf.
@@ -27,7 +35,10 @@ The fields `px0`, `px`, and `py` must all be a struct of the probability density
 
 **TODO: This might be extended at some point to allow for approximate optimal proposals and such**
 
-## Probability Densities
+Certain models may also include additional (specialized) fields (e.g. the conditionally linear models), which are used in algorithms tailored to that class of model. Please see the model section as well as the respective models for more details.
+
+
+### Probability Densities
 Probability density functions (pdfs) need to define a function to draw samples from, a function to evaluate the pdf, a function to evaluate the log-pdf (it is really the log-pdf that is used in most places), and a flag whether these functions can take whole sets of particles at once or not. The fields are:
 
 * `rand(x, t)`: Function to draw samples `z | x` (`z` may be, e.g., the predicted state), 
@@ -37,24 +48,36 @@ Probability density functions (pdfs) need to define a function to draw samples f
 
 
 
-The Parameter Structure
------------------------
+
+
+
+### The Parameter Structure
 TODO: Describe `par`.
 
 
-The Particle System
--------------------
-Each function can also return the particle system as its second output variable `sys` (see above). This variable is a structure that stores all particles, their weights, etc. for all time points. The fields in this variable are may vary, but the most common ones are:
+### The Particle System
+The particle system stores all particles, their weights, ancestor indices, and more, which can be used for debugging or other advanced purposes. The particle system is stored in an array of structs, where each entry corresponds to a time step. Note that there is an additional entry for the initial state (stored in `sys(1)`), that is, if the data length is `N`, then there will be `N+1` entries in `sys`.
 
-* `sys.xf`: 
-* `sys.wf`: 
-* `sys.r`: 
-* `sys.xs`: 
-* `sys.ws`: 
+The fields of the particle system structure are as follows (not all of them may be present, depending on the method; see the respective method's help function for details):
+
+* `x`: Nx times M matrix of marginal filtering density particles,
+* `w`: 1 times M vector of marginal filtering density particle weights,
+* `a`: 1 times M vector of ancestor indices,
+* `xf`: Nx times M matrix of joint filtering states (i.e. `sys(:).xf(:, j)` corresponds to a complete (degenerate) state trajectory),
+* `wf`: 1 times M vector of joint filtering trajectory weights (only set for `sys(N)`, 
+* `xs`: Nx times M matrix of *s*moothed particles,
+* `ws`: 1 times M vector of *s*moothed particle weights,
+* `r`: Boolean variable indicating whether resampling was used at the given time step (for algorithms that use delayed resampling),
 
 `sys` may also contain additional relevant fields, depending on the particular method. See the help page of each function for details (`help <function>`).
 
+**TODO:** I should use individual fields for the marginal density and the joint filtering density; also this needs to be implemented in calculate_particle_lineages (i.e. that they are stored in different fields. need to check how to add a field to arrays of structs).
+
+**TODO:** Make sys an array of structs; that is much more efficient to store and reference things (also with respect to things like covariance matrices.
+
 **TODO: Describe somewhere what the conventions are**
+
+Typical scenarios where we have other variables: s/z/P (for conditionally linear models)
 
 *rb_cpfas:*
 * par
@@ -72,16 +95,36 @@ Each function can also return the particle system as its second output variable 
   * sample_states
   * sample_parameters
 
-# Algorithms
+## Algorithms
+The library currently implements the following algorithms:
+
+* `sisr_pf`: Generic sequential importance sampling with resampling particle filter.
+
+You might find other methods implemented in the source code, but as long as it is not listed above, consider the implementation to be unstable/subject to major changes/etc.
+
+## Models
+There are also a couple of constructors for commonly used model types ready to use. These are found in the folder `src/models` and are prefixed with `model_`. The currently implemented models are:
+
+* `model_lgssm`: Linear, Gaussian state space model,
+* `model_wiener_ssm`: Wiener state space model (linear Gaussian dynamics, nonlinear likelihood),
+* `model_clgssm1`: Mixing linear/nonlinear Gaussian state space model, (**TODO: Not actually implemented yet**)
+* `model_clgssm2`: Hierarchical linear/nonlinear Gaussian state space model. (**TODO: Not actually implemented yet**)
+
+
+## Examples
 
 
 
 
-# Models
+
+## References
 
 
 
 
 
 
+
+## TODO
+* Ensure that `par` structures are not passed along to other functions to avoid confusion in what parameters are used and what not.
 
