@@ -22,7 +22,7 @@ function [xhat, sys] = sisr_pf(y, t, model, q, M, par)
 %   model   State space model structure.
 %   q       Importance distribution structure.
 %   M       Number of particles (optional, default: 100).
-%   par     Structure of additional parameters:
+%   par     Structure of additional (optional) parameters:
 %
 %           [alpha, lw, r] = resample(lw)
 %               Function handle to the resampling function. The argument lw
