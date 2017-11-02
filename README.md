@@ -8,7 +8,7 @@ This is a Matlab library implementing sequential Monte Carlo (aka particle filte
 
 Each of the structures is described in turn below, followed by a list of implemented algorithms and standard models included in the toolbox. The interface of each algorithm is documented in the corresponding Matlab help page.
 
-Some general notation used throughout this file:
+Some general notation used throughout this file (and the code):
 
 * `N`: Number of datapoints,
 * `Nx`: State dimension,
@@ -64,9 +64,9 @@ The fields of the particle system structure are as follows (not all of them may 
 * `w`: 1 times M vector of marginal filtering density particle weights,
 * `a`: 1 times M vector of ancestor indices,
 * `xf`: Nx times M matrix of joint filtering states (i.e. `sys(:).xf(:, j)` corresponds to a complete (degenerate) state trajectory),
-* `wf`: 1 times M vector of joint filtering trajectory weights (only set for `sys(N)`, 
-* `xs`: Nx times M matrix of *s*moothed particles,
-* `ws`: 1 times M vector of *s*moothed particle weights,
+* `wf`: 1 times M vector of joint filtering trajectory weights (only set for `sys(N)`), 
+* `xs`: Nx times M matrix of smoothed particles, **TODO**
+* `ws`: 1 times M vector of smoothed particle weights, **TODO**
 * `r`: Boolean variable indicating whether resampling was used at the given time step (for algorithms that use delayed resampling),
 
 `sys` may also contain additional relevant fields, depending on the particular method. See the help page of each function for details (`help <function>`).
@@ -99,6 +99,7 @@ Typical scenarios where we have other variables: s/z/P (for conditionally linear
 The library currently implements the following algorithms:
 
 * `sisr_pf`: Generic sequential importance sampling with resampling particle filter.
+* `bootstrap_pf`: Bootstrap particle filter.
 
 You might find other methods implemented in the source code, but as long as it is not listed above, consider the implementation to be unstable/subject to major changes/etc.
 
@@ -127,4 +128,8 @@ There are also a couple of constructors for commonly used model types ready to u
 
 ## TODO
 * Ensure that `par` structures are not passed along to other functions to avoid confusion in what parameters are used and what not.
+* The non-Markovian implementations are quite a mess at the moment. We will need to improve that.
+* Remove the following function(s):
+  * `calculate_incremental_weights()`: This is now being taken care of through the parameter `calculate_incremental_weights()` in `sisr_pf` (and should be migrated to the same approach everywhere else).
+
 
