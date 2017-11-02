@@ -60,7 +60,8 @@ function [xhat, sys] = sisr_pf(y, t, model, q, M, par)
         par = [];
     end
     def = struct(...
-        'resample', @resample_ess ... % Resampling function
+        'resample', @resample_ess, ...
+        'calculate_incremental_weights', @calculate_incremental_weights_generic ...
     );
     par = parchk(par, def);
     modelchk(model);
@@ -96,7 +97,7 @@ function [xhat, sys] = sisr_pf(y, t, model, q, M, par)
         xp = sample_q(y(:, n), x(:, alpha), t(n), q);
         
         %% Weights
-        lv = calculate_incremental_weights(y(:, n), xp, x, t(n), model, q);
+        lv = par.calculate_incremental_weights(y(:, n), xp, x, t(n), model, q);
         lw = lw+lv;
         lw = lw-max(lw);
         w = exp(lw);

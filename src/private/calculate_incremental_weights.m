@@ -26,8 +26,9 @@ function lv = calculate_incremental_weights(y, xp, x, t, model, q)
 %   2017-11-02 -- Roland Hostettler <roland.hostettler@aalto.fi>
 
     narginchk(6, 6);
+    warning('This function is deprecated and should be called anymore. Instead, set the appropriate value for par.calculate_incremental_weights.');
     if isfield(q, 'bootstrap') && q.bootstrap
-        lv = calculate_incremental_weights_bootstrap(y, xp, t, model);
+        lv = calculate_incremental_weights_bootstrap(y, xp, x, t, model, q);
     else
         lv = calculate_incremental_weights_generic(y, xp, x, t, model, q);
     end

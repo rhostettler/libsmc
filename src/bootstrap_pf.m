@@ -1,59 +1,73 @@
-function [xhat, Phat, sys] = bootstrap_pf(y, t, model, M, par)
-% Bootstrap for AWG process & measurement noise, and Gau
+function [xhat, sys] = bootstrap_pf(y, t, model, M, par)
+% Bootstrap particle filter
 %
 % SYNOPSIS
-%   [xhat, Phat] = bootstrap_pf(y, t, model, M)
-%   [xhat, Phat, sys] = bootstrap_pf(y, t, model, M, par)
+%   xhat = BOOTSTRAP_PF(y, t, model, M)
+%   [xhat, sys] = BOOTSTRAP_PF(y, t, model, M, par)
 %
 % DESCRIPTION
-%      ------------------
-%   A simple bootstrap particle filter that assumes zero-mean additive
-%   Gaussian process and measurement nosie with covariance Q and R,
-%   respectively, non-linear state transition function f and observation
-%   function g, and initial distribution N(m0, P0).
-%
-%%%%%%%%%   Uses systematic resampling whenever the ESS < M/3.
+%   This is the very common bootstrap particle filtering algorithm which
+%   uses the dynamic model as the proposal distribution and the incremental
+%   weights reduce to the likelihood.
 %
 % PARAMETERS
-%   ------
+%   y       Ny times N matrix of measurements.
+%   t       1 times N vector of timestamps.
+%   model   State space model structure.
+%   M       Number of particles (optional, default: 100).
+%   par     Structure of additional (optional) parameters:
 %
-% VERSION
-%   2017-03-27
+%           [alpha, lw, r] = resample(lw)
+%               Function handle to the resampling function. The argument lw
+%               is the log-weights and the must return the indices of the
+%               resampled (alpha) particles, the weights of the resampled 
+%               (lw) particles, as well as a bool indicating whether
+%               resampling was performed or not.
 %
-% AUTHOR
-%   Roland Hostettler <roland.hostettler@aalto.fi>
+% RETURNS
+%   xhat    Minimum mean squared error state estimate (calculated using the
+%           marginal filtering density).
+%   sys     Particle system array of structs with the following fields:
+%           
+%               xf  Nx times M matrix of particles for the marginal
+%                   filtering density.
+%               wf  1 times M vector of the particle weights for the
+%                   marginal filtering density.
+%               af  1 times M vector of ancestor indices.
+%               r   Boolean resampling indicator.
+%
+% AUThORS
+%   2017-03-27 -- Roland Hostettler <roland.hostettler@aalto.fi>
 
-    %% Preliminary Checks
-    % Check that we get the correct no. of parameters and a well-defined
-    % model so that we can detect model problems already here.
+    %% Defaults
     narginchk(3, 5);
     if nargin < 4 || isempty(M)
         M = 100;
     end
     if nargin < 5
-        par = [];
+        % Initialize the parameters if none were given; by default, we use
+        % the defaults from sisr_pf. This helps simplifying code
+        % maintenance.
+        par = struct();
     end
-    
-    % Default parameters
-    def = struct(...
-        'resample', @resample_ess, ... % Resampling function
-        'Mt', M/3 ...       % Resampling threshold
-    );
-    par = parchk(par, def);
-    par.bootstrap = 1;
-    [px, ~, ~] = modelchk(model);
+    modelchk(model);
     
     %% Filtering
-    % Bootstrap PF is nothing but a general SISR PF with the proposal being
-    % the dynamcis
-    q.fast = px.fast;
-    q.logpdf = @(xp, y, x, t) px.logpdf(xp, x, t);
+    % The Bootstrap PF is a spcial case of the more general SISR PF where
+    % the proposal is the dynamic model. Hence, we simply set the proposal
+    % accordingly and let sisr_pf to the work. Furthermore, we also set the
+    % function to calculate the incremental weights (we could use the
+    % generic one, but the one for bootstrap is somewhat faster).
+    q = struct();
+    q.fast = model.px.fast;
+    q.logpdf = @(xp, y, x, t) model.px.logpdf(xp, x, t);
     % q.pdf = @(xp, y, x, t) px.pdf(xp, x, t);
-    q.rand = @(y, x, t) px.rand(x, t);
-    switch nargout
-        case {1, 2}
-            [xhat, Phat] = sisr_pf(y, t, model, q, M, par);
-        case 3
-            [xhat, Phat, sys] = sisr_pf(y, t, model, q, M, par);
+    q.rand = @(y, x, t) model.px.rand(x, t);
+    par.calculate_incremental_weights = @calculate_incremental_weights_bootstrap;
+    
+    if nargout == 1
+        xhat = sisr_pf(y, t, model, q, M, par);
+    else
+        [xhat, sys] = sisr_pf(y, t, model, q, M, par);
     end
 end
