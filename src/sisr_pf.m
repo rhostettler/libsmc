@@ -1,25 +1,57 @@
-function [xhat, Phat, sys] = sisr_pf(y, t, model, q, M, par)
+function [xhat, sys] = sisr_pf(y, t, model, q, M, par)
 % Sequential importance sampling w/ resampling particle filter
 %
 % SYNOPSIS
-%   [xhat, Phat] = sisr_pf(y, t, model, q)
-%   [xhat, Phat, sys] = sisr_pf(y, t, model, q, M, par)
+%   xhat = SISR_PF(y, t, model, q)
+%   [xhat, sys] = SISR_PF(y, t, model, q, M, par)
 %
 % DESCRIPTION
-%   
+%   SISR_PF is a generic sequential importanc sampling with resampling
+%   particle filter, that is, pretty much the most generic SIR-type filter.
+%
+%   Note that in this implementation, resampling is done before sampling
+%   new states from the importance distribution, much like in the auxiliary
+%   particle filter (but is different from the auxiliary particle filter in
+%   that it generally doesn't make use of adjustment multipliers, even
+%   though that can be implemented too by using an appropriate
+%   'resampling()' function).
 %
 % PARAMETERS
-%   
+%   y       Ny times N matrix of measurements.
+%   t       1 times N vector of timestamps.
+%   model   State space model structure.
+%   q       Importance distribution structure.
+%   M       Number of particles (optional, default: 100).
+%   par     Structure of additional parameters:
 %
-% VERSION
-%   2017-03-23
+%           [alpha, lw, r] = resample(lw)
+%               Function handle to the resampling function. The argument lw
+%               is the log-weights and the must return the indices of the
+%               resampled (alpha) particles, the weights of the resampled 
+%               (lw) particles, as well as a bool indicating whether
+%               resampling was performed or not.
+%
+% RETURNS
+%   xhat    Minimum mean squared error state estimate (calculated using the
+%           marginal filtering density).
+%   sys     Particle system array of structs with the following fields:
+%           
+%               xf  Nx times M matrix of particles for the marginal
+%                   filtering density.
+%               wf  1 times M vector of the particle weights for the
+%                   marginal filtering density.
+%               af  1 times M vector of ancestor indices.
+%               r   Boolean resampling indicator.
 %
 % AUTHORS
-%   Roland Hostettler <roland.hostettler@aalto.fi>
+%   2017-11-02 -- Roland Hostettler <roland.hostettler@aalto.fi>
 
 % TODO:
 %   * Replace weighing function (see Wiener-apfs)
 %   * Use global calculate_incremental_weights() instead
+%   * Add possibility of adding output function
+%   * Add a field to the parameters that can be used to calculate custom
+%     'integrals'
 
     %% Preliminary Checks
     % Check that we get the correct no. of parameters and a well-defined
@@ -44,19 +76,17 @@ function [xhat, Phat, sys] = sisr_pf(y, t, model, q, M, par)
     x = px0.rand(M);
     lw = log(1/M)*ones(1, M);
     
+    % TODO: Add initial samples to system, increase N by one, change loop
+    % form 2:N
+    
     %% Preallocate
     Nx = size(x, 1);
     N = length(t);
-    if nargout == 3
-        alphas = zeros(1, M, N);    % Resampling indices
-        sys.x = zeros(Nx, M, N);    % Non-resampled particles
-        sys.xf = zeros(Nx, M, N);   % Full trajectories
-        sys.w = zeros(1, M, N);     % Non-resampled particle weights
-        sys.lw = zeros(1, M, N);    % Non-resampled log-weights
-        sys.r = zeros(1, N);        % Resampling indicator
+    if nargout >= 2
+        sys = initialize_sys(N, Nx, M);
+        return_sys = true;
     end
     xhat = zeros(Nx, N);
-    Phat = zeros(Nx, Nx, N);
     
     %% Process Data
     for n = 1:N
@@ -77,34 +107,19 @@ function [xhat, Phat, sys] = sisr_pf(y, t, model, q, M, par)
         
         %% Point Estimates
         xhat(:, n) = x*w';
-if 0
-        % Takes too much time; disabled for now.
-        for m = 1:M
-            Phat(:, :, n) = Phat(:, :, n) + w(m)*((xp(:, m)-xhat(:, n))*(xp(:, m)-xhat(:, n))');
-        end
-end
 
         %% Store
-        if nargout == 3
-            sys.x(:, :, n) = x;
-            sys.w(:, :, n) = w;
-            sys.lw(:, :, n) = lw;
-            sys.r(:, n) = r;
-            alphas(:, :, n) = alpha;
+        if return_sys
+            sys(n).x = x;
+            sys(n).w = w;
+            sys(n).alpha = alpha;
+            sys(n).r = r;
         end
     end
     
-    %% Post-processing
-    if nargout == 3
-        % Put together trajectories: Walk down the ancestral tree, 
-        % backwards in time to get the correct lineage.
-        alpha = 1:M;
-        sys.xf(:, :, N) = sys.x(:, :, N);
-        for n = N-1:-1:1
-            sys.xf(:, :, n) = sys.x(:, alphas(:, alpha, n+1), n);
-            alpha = alphas(:, alpha, n+1);
-        end
-        sys.wf = sys.w(:, :, N);
+    %% Calculate Joint Filtering Density
+    if return_sys
+        sys = calculate_particle_lineages(sys, 1:M);
     end
 end
 

@@ -29,7 +29,7 @@ function sys = calculate_particle_lineages(sys, alpha)
     % in time to get the correct particle lineage.
     narginchk(1, 2);
     N = length(sys);
-    M = size(sys(N).xf, 2);
+    M = size(sys(N).x, 2);
     
     % By default, calculate the lineages for all particles
     if nargin < 2 || isempty(alpha)
@@ -37,12 +37,14 @@ function sys = calculate_particle_lineages(sys, alpha)
     end
     
     % Traverse particles backwards in time
+    sys(N).xf = sys(N).x(:, alpha);
+    sys(N).wf = sys(N).w(:, alpha);
     for n = N-1:-1:1
         % Get ancestor indices
-        alpha = sys(n+1).af(:, alpha);
+        alpha = sys(n+1).alpha(:, alpha);
         
         % Get ancestor particles & weights
-        sys(n).xf = sys(n).xf(:, alpha);
-        sys(n).wf = sys(n).wf(:, alpha);
+        sys(n).xf = sys(n).x(:, alpha);
+        %sys(n).wf = sys(n).w(:, alpha);
     end
 end

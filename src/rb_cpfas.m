@@ -1,5 +1,5 @@
 function [x, sys] = rb_cpfas(y, t, model, xt, M, par)
-% Rao-Blackwellized conditional particle filter for mixed CLGSS models
+% Rao--Blackwellized conditional particle filter for mixed CLGSS models
 %
 % SYNOPSIS
 %   x = rb_cpfas(y, t, model)
@@ -66,17 +66,16 @@ function [x, sys] = rb_cpfas(y, t, model, xt, M, par)
 %   cpfas
 %
 % REFERENCES
-%   [1] R. Hostettler, S. S?rkk?, S. J. Godsill, "Rao???Blackwellized
+%   [1] R. Hostettler, S. Sarkka, S. J. Godsill, "Rao--Blackwellized
 %       particle MCMC for parameter estimation in spatio-temporal Gaussian
 %       processes," 2017, to appear.
 %
-% VERSION
-%   2017-05-24
-%
-% AUTHOR
-%   Roland Hostettler <roland.hostettler@aalto.fi>
+% AUTHORS
+%   2017-05-24 -- Roland Hostettler <roland.hostettler@aalto.fi>
 
 % TODO
+%   * Update the references in the documentation (actually, update the
+%     documentation entirely).
 %   * The initialize function should probably be replaced by a RBPF or
 %     something.
 %   * Should we return the smoothed covariance as well?
@@ -85,6 +84,10 @@ function [x, sys] = rb_cpfas(y, t, model, xt, M, par)
 %     article.
 %   * Rewrite. Make such that it only returns 's' (also update the
 %     notation), and both z and P are returned in sys.
+%   * How about calculating the lineage if we have particle-dependent P? I
+%     think the most straight-forward notation will be to include a
+%     varargin to calculate_particle_lineage() that takes a list of fields
+%     which have to be considered.
 
 % NOTES
 %   * Assumes implicitly that G, H, and Q don't depend on s[n-1] which
@@ -121,8 +124,6 @@ function [x, sys] = rb_cpfas(y, t, model, xt, M, par)
     N = N+1;                            % +1 to include x[0]
     
     % Stores the full trajectories
-    alphaf = zeros(1, M, N);    % Ancestor indices
-    xf = zeros(Nx, M, N);       % Trajectories
     Pf = zeros(Nz, Nz, N);      % Covariances for linear states
     
     %% Seed Trajectory
@@ -132,15 +133,10 @@ function [x, sys] = rb_cpfas(y, t, model, xt, M, par)
     sbar = xt(in, :);
         
     %% Prepare Particle System
-    sys = repmat( ...
-        struct( ...
-            'xf', zeros(Nx, M), ...
-            'wf', zeros(1, M), ...
-            'af', zeros(1, M), ...
-            'Pf', zeros(Nx, Nx, M) ...
-        ), ...
-        [N, 1] ...
-    );
+    % TODO: Use initialize_sys, store in x, w, and alpha, use xf for full
+    % trajectories (see calculate_particle_lineages())
+    sys = initialize_sys(N, Nx, M);
+    sys(N).P = zeros(Nx, Nx, M);
     
     %% Initialize
     % Prepend t_0 and no measurement
@@ -158,10 +154,10 @@ function [x, sys] = rb_cpfas(y, t, model, xt, M, par)
     lw = log(1/M)*ones(1, M);
     
     % Store initial
-    sys(1).wf = w;
-    sys(1).xf(in, :) = s;
-    sys(1).xf(il, :) = z;
-    sys(1).Pf = P;
+    sys(1).w = w;
+    sys(1).x(in, :) = s;
+    sys(1).x(il, :) = z;
+    sys(1).P = P;
     
     %% Process Data
     for n = 2:N
@@ -198,11 +194,11 @@ function [x, sys] = rb_cpfas(y, t, model, xt, M, par)
         end
         
         %% Store New Samples & Ancestor Indices
-        sys(n).xf(in, :) = s;
-        sys(n).xf(il, :) = z;
-        sys(n).wf = w;
-        sys(n).af = alpha;
-        sys(n).Pf = P;
+        sys(n).x(in, :) = s;
+        sys(n).x(il, :) = z;
+        sys(n).w = w;
+        sys(n).alpha = alpha;
+        sys(n).P = P;
     end
     
     %% Draw Trajectory    
@@ -211,11 +207,12 @@ function [x, sys] = rb_cpfas(y, t, model, xt, M, par)
     j = beta(randi(M, 1));
     sys = calculate_particle_lineages(sys, j);
     x = cat(2, sys.xf);
-    
+    P = cat(3, sys.P);
+        
     %% Smooth Linear States
     % TODO: This is boken too; in particular saving it to sys
 %    [x(il, :), sys.Pz_s] = smooth_linear(x, Pf, t, model);
-    x(il, :) = smooth_linear(x, Pf, t, model);
+    x(il, :) = smooth_linear(x, P, t, model);
 end
 
 %% Initialization

@@ -1,18 +1,18 @@
-function model = lgss_model(F, Q, G, R, m0, P0)
-% Initializes a linear Gaussian state-space model
+function model = model_lgssm(F, Q, G, R, m0, P0)
+% Initializes a linear Gaussian state space model
 %
 % SYNOPSIS
-%   model = lgss_model(F, Q, G, R, m0, P0)
+%   model = MODEL_LGSSM(F, Q, G, R, m0, P0)
 %
 % DESCRIPTION
 %   Creates a model structure with the appropriate probabilistic
-%   description for linear, Gaussian state-space models. Given the model of
+%   description for linear, Gaussian state space models. Given the model of
 %   the form
 %
 %       x[n] = F*x[n-1] + q
 %       y[n] = G*x[n] + r
 %
-%   where q[n] ~ N(0, Q) and r[n] ~?N(0, R) and p(x[0]) = N(m0, P0) (F, G,
+%   where q[n] ~ N(0, Q), r[n] ~ N(0, R), and p(x[0]) = N(m0, P0) (F, G,
 %   Q, and R may all depend on t(n)), the function calculates the
 %   corresponding transition density and likelihood, which are given by
 %
@@ -23,22 +23,18 @@ function model = lgss_model(F, Q, G, R, m0, P0)
 %
 % PARAMETERS
 %   F, Q, G, R, m0, P0
-%       Model parameters. If any of the parameters is time-varying, supply
-%       a function handle of the form @(t).
+%           Model parameters. If any of the parameters is time-varying,
+%           supply a function handle of the form @(t).
 %
 % RETURNS
-%   model
-%       Model struct containing px0, px, and py as described above.
+%   model   Model struct containing px0, px, and py as described above.
 %
-% VERSION
-%   2017-04-06
-%
-% AUTHOR
-%   Roland Hostettler <roland.hostettler@aalto.fi>
+% AUTHORS
+%   2017-11-02 -- Roland Hostettler <roland.hostettler@aalto.fi>
 
 % TODO:
-%   * 'rho' should actually also be time-dependent (to handle non-uniformly
-%     sampled data).
+%   * As it is now, the matrices are also stored; I might consider removing
+%     this in the future.
     
     %% Defaults
     narginchk(6, 6);
