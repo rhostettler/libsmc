@@ -1,4 +1,4 @@
-function [x, theta] = gibbs_pmcmc(y, t, model, theta0, K, par)
+function [x, theta, sys] = gibbs_pmcmc(y, t, model, theta0, K, par)
 % Particle Gibbs Markov chain Monte Carlo sampler
 %
 % SYNOPSIS
@@ -27,27 +27,22 @@ function [x, theta] = gibbs_pmcmc(y, t, model, theta0, K, par)
 %   
 % PARAMETERS
 %   y       Measurement data matrix Ny*N
-%
 %   t       Time vector (default: 1:N)
-%
 %   model(theta)
 %           Function handle to construct the model, takes the parameter
 %           values theta as an argument.
 %
 %   K       No. of MCMC samples to generate (optional, default: 100)
-%
 %   theta0  Initial guess of the model parameters
-%
 %   par     Additional parameters:
 %
 %               Kburnin No. of burn-in samples (default: 0)
-%
 %               Kmixing No. of samples for improving the mixing
 %                       (default: 1)
 %
 %               x = sample_states(y, t, x, theta, model)
 %                       Function to sample the states (default: cpfas).
-%
+% 
 %               [theta, state] = sample_parameters(y, t, x, theta, model, state)
 %                       Function to sample the model parameters (default:
 %                       []). In addition to the newly sampled parameters,
@@ -61,9 +56,8 @@ function [x, theta] = gibbs_pmcmc(y, t, model, theta0, K, par)
 %                       sampled trajectories and parameters.
 % 
 % RETURNS
-%   x       Trajectory samples (Nx*N*K)
-%
-%   theta   Parameter samples (Ntheta*K)
+%   x       Trajectory samples (Nx times N times K)
+%   theta   Parameter samples (Ntheta times K)
 %
 % SEE ALSO
 %   cpfas, rb_cpfas
@@ -71,18 +65,20 @@ function [x, theta] = gibbs_pmcmc(y, t, model, theta0, K, par)
 % REFERENCES
 %   [1] C. Andrieu, A. Doucet, and R. Holenstein, "Particle Markov chain
 %       Monte Carlo methods," Journal of the Royal Statistical Society: 
-%       Series B (Statistical Methodology), vol. 72, no. 3, pp. 269–342, 
+%       Series B (Statistical Methodology), vol. 72, no. 3, pp. 269???342, 
 %       2010.
 %
-%   [2] F. Lindsten, M. I. Jordan, and T. B. Schön, "Particle Gibbs with
+%   [2] F. Lindsten, M. I. Jordan, and T. B. Schon, "Particle Gibbs with
 %       ancestor sampling," Journal of Machine Learning Research, vol. 15, 
-%       pp. 2145–2184, 2014.
-%
-% VERSION
-%   2017-10-04
-%
-% AUTHOR
-%   Roland Hostettler <roland.hostettler@aalto.fi>
+%       pp. 2145-2184, 2014.
+% 
+% AUTHORS
+%   2017-10-04 -- Roland Hostettler <roland.hostettler@aalto.fi>
+
+% TODO:
+%   * There's still confusion about using both 'create_model' and theta in
+%     the different methods. That should be sorted out somehow by the model
+%     things
 
     %% Defaults
     narginchk(3, 6);
@@ -119,20 +115,23 @@ function [x, theta] = gibbs_pmcmc(y, t, model, theta0, K, par)
     N = size(y, 2);
     Ntheta = size(theta0, 1);
     theta = [theta0, zeros(Ntheta, Kmcmc)];
-    x = zeros(Nx, N+1, Kmcmc);
+    x = zeros(Nx, N+1, Kmcmc+1);
+    sys = repmat(struct('x', [], 'w', [], 'P', [], 'Pz_s', []), [1, Kmcmc]);
 
     %% MCMC sampling
     for k = 2:Kmcmc+1
         % Sample trajectory
         if ~isempty(par.sample_states)
-            x(:, :, k) = par.sample_states(y, t, x(:, :, k-1), theta(:, k-1), model(theta));
+            [x(:, :, k), sys(k)] = par.sample_states(y, t, x(:, :, k-1), theta(:, 1:k-1), model(theta(:, k-1)));
         else
-            warning('No state sampling method provided, are you sure you want to use PMCMC?');
+            error('No state sampling method provided.');
         end
         
         % Sample parameters
         if ~isempty(par.sample_parameters)
             [theta(:, k), state] = par.sample_parameters(y, t, x(:, :, k), theta(:, 1:k-1), model, state);
+        else
+            theta(:, k) = theta(:, k-1);
         end
         
         % Show progress
@@ -144,6 +143,7 @@ function [x, theta] = gibbs_pmcmc(y, t, model, theta0, K, par)
     %% Post-processing
     % Strip initial values, burn-in, and mixing
     x = x(:, 2:N+1, par.Kburnin+2:par.Kmixing:Kmcmc+1);
+    sys = sys(par.Kburnin+2:Kmcmc+1);
     if ~isempty(theta)
         theta = theta(:, par.Kburnin+2:par.Kmixing:Kmcmc+1);
     end
