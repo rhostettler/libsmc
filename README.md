@@ -16,6 +16,8 @@ Some general notation used throughout this file (and the code):
 * `M`: Number of samples (particles),
 * `K`: Number of MCMC samples.
 
+**TODO** Add disclaimer here.
+
 
 ## Data Structures
 ### Model Definition
@@ -27,13 +29,13 @@ The `model` structure defines a probabilistic model in terms of its state transi
 
 Additionally, a model may include the following field:
 
-* `model.ptheta`: **TODO: This is not quite finalized yet.**
+* `model.ptheta`: **TODO:** This is not quite finalized yet
 
-The fields `px0`, `px`, and `py` must all be a struct of the probability density type described below. `ptheta` may **TODO: Describe**.
+The fields `px0`, `px`, and `py` must all be a struct of the probability density type described below. `ptheta` may **TODO:** Describe
 
-**TODO: Describe the general model here (github doesn't support jax, use a latex generated png instead)**
+**TODO:** Describe the general model here (github doesn't support jax, use a latex generated png instead)
 
-**TODO: This might be extended at some point to allow for approximate optimal proposals and such**
+**TODO:** This might be extended at some point to allow for approximate optimal proposals and such
 
 Certain models may also include additional (specialized) fields (e.g. the conditionally linear models), which are used in algorithms tailored to that class of model. Please see the model section as well as the respective models for more details.
 
@@ -47,12 +49,8 @@ Probability density functions (pdfs) need to define a function to draw samples f
 * `fast`: A boolean variable which indicates whether whole particle sets can be supplied as arguments or not (to speed up computations).
 
 
-
-
-
-
 ### The Parameter Structure
-TODO: Describe `par`.
+**TODO:** Describe `par`.
 
 
 ### The Particle System
@@ -62,21 +60,52 @@ The fields of the particle system structure are as follows (not all of them may 
 
 * `x`: Nx times M matrix of marginal filtering density particles,
 * `w`: 1 times M vector of marginal filtering density particle weights,
-* `a`: 1 times M vector of ancestor indices,
+* `alpha`: 1 times M vector of ancestor indices,
 * `xf`: Nx times M matrix of joint filtering states (i.e. `sys(:).xf(:, j)` corresponds to a complete (degenerate) state trajectory),
 * `wf`: 1 times M vector of joint filtering trajectory weights (only set for `sys(N)`), 
-* `xs`: Nx times M matrix of smoothed particles, **TODO**
-* `ws`: 1 times M vector of smoothed particle weights, **TODO**
+* `xs`: Nx times M matrix of smoothed particles,
+* `ws`: 1 times M vector of smoothed particle weights,
 * `r`: Boolean variable indicating whether resampling was used at the given time step (for algorithms that use delayed resampling),
 
 `sys` may also contain additional relevant fields, depending on the particular method. See the help page of each function for details (`help <function>`).
 
-**TODO:** I should use individual fields for the marginal density and the joint filtering density; also this needs to be implemented in calculate_particle_lineages (i.e. that they are stored in different fields. need to check how to add a field to arrays of structs).
 
-**TODO:** Make sys an array of structs; that is much more efficient to store and reference things (also with respect to things like covariance matrices.
+## Algorithms
+The library currently implements the following algorithms:
 
-**TODO: Describe somewhere what the conventions are**
+* `sisr_pf`: Generic sequential importance sampling with resampling particle filter.
+* `bootstrap_pf`: Bootstrap particle filter.
 
+You might find other methods implemented in the source code, but as long as it is not listed above, consider the implementation to be unstable/subject to major changes/etc.
+
+
+## Models
+There are also a couple of constructors for commonly used model types ready to use. These are found in the folder `src/models` and are prefixed with `model_`. The currently implemented models are:
+
+* `model_lgssm`: Linear, Gaussian state space model,
+* `model_wiener_ssm`: Wiener state space model (linear Gaussian dynamics, nonlinear likelihood), (**TODO:** Implemented but needs cleanup, together with the related functions)
+* `model_clgssm1`: Mixing linear/nonlinear Gaussian state space model, (**TODO:** Not actually implemented yet)
+* `model_clgssm2`: Hierarchical linear/nonlinear Gaussian state space model. (**TODO:** Not actually implemented yet)
+
+
+## Examples
+In the directory `examples`, you can find a couple of examples that show how to use the library. These are:
+
+* `example_ungm`: An example using the univariate growth model commonly used as a benchmark for filtering algorithms (see, for example, [X]), **TODO:** Implement this.
+* `example_psis`: Example using a pareto distribution fit to the tail of the importance weights as a resampling criterion (see [X]),
+
+
+## References
+
+
+## TODO
+* Ensure that `par` structures are not passed along to other functions to avoid confusion in what parameters are used and what not.
+* The non-Markovian implementations are quite a mess at the moment. We will need to improve that.
+* Remove the following function(s):
+  * `calculate_incremental_weights()`: This is now being taken care of through the parameter `calculate_incremental_weights()` in `sisr_pf` (and should be migrated to the same approach everywhere else).
+* Port the GPU-based codes as well.
+
+### Random Notes
 Typical scenarios where we have other variables: s/z/P (for conditionally linear models)
 
 *rb_cpfas:*
@@ -94,42 +123,4 @@ Typical scenarios where we have other variables: s/z/P (for conditionally linear
   * Kmixing
   * sample_states
   * sample_parameters
-
-## Algorithms
-The library currently implements the following algorithms:
-
-* `sisr_pf`: Generic sequential importance sampling with resampling particle filter.
-* `bootstrap_pf`: Bootstrap particle filter.
-
-You might find other methods implemented in the source code, but as long as it is not listed above, consider the implementation to be unstable/subject to major changes/etc.
-
-## Models
-There are also a couple of constructors for commonly used model types ready to use. These are found in the folder `src/models` and are prefixed with `model_`. The currently implemented models are:
-
-* `model_lgssm`: Linear, Gaussian state space model,
-* `model_wiener_ssm`: Wiener state space model (linear Gaussian dynamics, nonlinear likelihood),
-* `model_clgssm1`: Mixing linear/nonlinear Gaussian state space model, (**TODO: Not actually implemented yet**)
-* `model_clgssm2`: Hierarchical linear/nonlinear Gaussian state space model. (**TODO: Not actually implemented yet**)
-
-
-## Examples
-
-
-
-
-
-## References
-
-
-
-
-
-
-
-## TODO
-* Ensure that `par` structures are not passed along to other functions to avoid confusion in what parameters are used and what not.
-* The non-Markovian implementations are quite a mess at the moment. We will need to improve that.
-* Remove the following function(s):
-  * `calculate_incremental_weights()`: This is now being taken care of through the parameter `calculate_incremental_weights()` in `sisr_pf` (and should be migrated to the same approach everywhere else).
-
 
