@@ -58,9 +58,10 @@ function [alpha, lw, r] = resample_psis(lw, par)
         lw = lws.';
     end
     r = (khat > par.kt);
+    M = length(lw);
+    alpha = 1:M;
     if r
         w = exp(lw);
-        M = length(lw);
         alpha = par.resample(w);
         lw = log(1/M)*ones(1, M);
     end
