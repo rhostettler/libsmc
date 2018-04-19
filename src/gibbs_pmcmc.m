@@ -79,6 +79,7 @@ function [x, theta, sys] = gibbs_pmcmc(y, t, model, theta0, K, par)
 %   * There's still confusion about using both 'create_model' and theta in
 %     the different methods. That should be sorted out somehow by the model
 %     things
+%   * Returning particle system is broken
 
     %% Defaults
     narginchk(3, 6);
@@ -106,6 +107,8 @@ function [x, theta, sys] = gibbs_pmcmc(y, t, model, theta0, K, par)
     Kmcmc = par.Kburnin + 1+(K-1)*par.Kmixing;
 
     %% Initialize
+    t = [0, t];
+    
     % State of Metropolis-within-Gibbs sampler
     state = [];
     
@@ -116,13 +119,16 @@ function [x, theta, sys] = gibbs_pmcmc(y, t, model, theta0, K, par)
     Ntheta = size(theta0, 1);
     theta = [theta0, zeros(Ntheta, Kmcmc)];
     x = zeros(Nx, N+1, Kmcmc+1);
-    sys = repmat(struct('x', [], 'w', [], 'P', [], 'Pz_s', []), [1, Kmcmc]);
+    %sys = repmat(struct('x', [], 'w', [], 'P', [], 'Pz_s', []), [1, Kmcmc]);
+    sys = initialize_sys(N, Nx, Kmcmc);
 
     %% MCMC sampling
     for k = 2:Kmcmc+1
         % Sample trajectory
+        % TODO: sys should be handled correctly!
         if ~isempty(par.sample_states)
-            [x(:, :, k), sys(k)] = par.sample_states(y, t, x(:, :, k-1), theta(:, 1:k-1), model(theta(:, k-1)));
+            [x(:, :, k), tmp] = par.sample_states(y, t, x(:, :, k-1), theta(:, 1:k-1), model(theta(:, k-1)));
+            %[x(:, :, k), sys(k)] = par.sample_states(y, t, x(:, :, k-1), theta(:, 1:k-1), model(theta(:, k-1)));
         else
             error('No state sampling method provided.');
         end
@@ -143,7 +149,7 @@ function [x, theta, sys] = gibbs_pmcmc(y, t, model, theta0, K, par)
     %% Post-processing
     % Strip initial values, burn-in, and mixing
     x = x(:, 2:N+1, par.Kburnin+2:par.Kmixing:Kmcmc+1);
-    sys = sys(par.Kburnin+2:Kmcmc+1);
+%     sys = sys(par.Kburnin+2:Kmcmc+1);
     if ~isempty(theta)
         theta = theta(:, par.Kburnin+2:par.Kmixing:Kmcmc+1);
     end

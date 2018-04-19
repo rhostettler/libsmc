@@ -1,5 +1,5 @@
-function [x, sys] = rb_cpfas(y, t, model, xt, M, par)
-% Rao--Blackwellized conditional particle filter for mixed CLGSS models
+function [x, sys] = rbcpfas(y, t, model, xt, M, par)
+% Rao-Blackwellized conditional particle filter for mixed CLGSS models
 %
 % SYNOPSIS
 %   x = rb_cpfas(y, t, model)
@@ -88,6 +88,7 @@ function [x, sys] = rb_cpfas(y, t, model, xt, M, par)
 %     think the most straight-forward notation will be to include a
 %     varargin to calculate_particle_lineage() that takes a list of fields
 %     which have to be considered.
+%   * Assumes bootstrap proposal
 
 % NOTES
 %   * Assumes implicitly that G, H, and Q don't depend on s[n-1] which
@@ -140,7 +141,6 @@ function [x, sys] = rb_cpfas(y, t, model, xt, M, par)
     
     %% Initialize
     % Prepend t_0 and no measurement
-    t = [0, t];
     y = [NaN*ones(Ny, 1), y];
     
     % Initial samples
@@ -179,7 +179,7 @@ function [x, sys] = rb_cpfas(y, t, model, xt, M, par)
         [zp, Pp] = kf_update(z(:, alpha), P, sp, s(:, alpha), t(n), model);
                 
         % Particle weights
-        [~, lw] = bootstrap_incremental_weights(y(:, n), sp, t(n), model);
+        lw = calculate_incremental_weights_bootstrap(y(:, n), sp, s(:, alpha), t(n), model, []);
 
         % Normalize weights and update particles
         s = sp;
@@ -244,7 +244,6 @@ function x = initialize(y, t, model, M)
     xf = zeros(Nx, M, N);       % Trajectories
     
     %% Initialize
-    t = [0, t];
     y = [zeros(Ny, 1), y];
     m0 = model.m0;
     P0 = model.P0;
@@ -267,7 +266,7 @@ function x = initialize(y, t, model, M)
         [zp, Pp] = kf_update(z(:, alpha), P, sp, s(:, alpha), t(n), model);
                 
         % Particle weights
-        [~, lw] = bootstrap_incremental_weights(y(:, n), sp, t(n), model);
+        lw = calculate_incremental_weights_bootstrap(y(:, n), sp, s(:, alpha), t(n), model, []);
 
         % Normalize weights and update particles
         s = sp;
