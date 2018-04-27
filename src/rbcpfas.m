@@ -89,11 +89,12 @@ function [x, sys] = rbcpfas(y, t, model, xt, M, par)
 %     varargin to calculate_particle_lineage() that takes a list of fields
 %     which have to be considered.
 %   * Assumes bootstrap proposal
+%   * Handling of the linear states is hacky at best
 
 % NOTES
 %   * Assumes implicitly that G, H, and Q don't depend on s[n-1] which
 %     helps speeding up the calculation (parallelizable). The affected
-%     functions are 'kf_update', 'calculate_ancesotor_weights', and
+%     functions are 'kf_predict', 'calculate_ancesotor_weights', and
 %     'draw_samples'.
 
     %% Defaults
@@ -123,10 +124,7 @@ function [x, sys] = rbcpfas(y, t, model, xt, M, par)
     Nz = length(il);
     Nx = Ns+Nz;
     N = N+1;                            % +1 to include x[0]
-    
-    % Stores the full trajectories
-    Pf = zeros(Nz, Nz, N);      % Covariances for linear states
-    
+        
     %% Seed Trajectory
     if nargin < 4 || isempty(xt) || sum(sum(xt)) == 0
         xt = initialize(y, t, model, M);
@@ -176,7 +174,7 @@ function [x, sys] = rbcpfas(y, t, model, xt, M, par)
         alpha(M) = tmp(randi(M, 1));
 
         % KF update
-        [zp, Pp] = kf_update(z(:, alpha), P, sp, s(:, alpha), t(n), model);
+        [zp, Pp] = kf_predict(z(:, alpha), P, sp, s(:, alpha), t(n), model);
                 
         % Particle weights
         lw = calculate_incremental_weights_bootstrap(y(:, n), sp, s(:, alpha), t(n), model, []);
@@ -209,10 +207,13 @@ function [x, sys] = rbcpfas(y, t, model, xt, M, par)
     x = cat(2, sys.xf);
     P = cat(3, sys.P);
         
-    %% Smooth Linear States
-    % TODO: This is boken too; in particular saving it to sys
-%    [x(il, :), sys.Pz_s] = smooth_linear(x, Pf, t, model);
-    x(il, :) = smooth_linear(x, P, t, model);
+    % Smooth Linear States
+    [x(il, :), Ps] = rts_smooth(x, P, t, model);
+    % TODO: This is hacky!
+    for n = 1:N
+        sys(n).xf(il, :) = x(il, n);
+        sys(n).Ps = Ps(:, :, n);
+    end
 end
 
 %% Initialization
@@ -263,7 +264,7 @@ function x = initialize(y, t, model, M)
         sp = draw_samples(s(:, alpha), z(:, alpha), P, t(n), model);
 
         % KF update
-        [zp, Pp] = kf_update(z(:, alpha), P, sp, s(:, alpha), t(n), model);
+        [zp, Pp] = kf_predict(z(:, alpha), P, sp, s(:, alpha), t(n), model);
                 
         % Particle weights
         lw = calculate_incremental_weights_bootstrap(y(:, n), sp, s(:, alpha), t(n), model, []);
@@ -297,14 +298,14 @@ function x = initialize(y, t, model, M)
 end
 
 %% RTS Smoothing
-function [z_s, P_s] = smooth_linear(x, P, t, model)
+function [mzs, Pzs] = rts_smooth(x, Pz, t, model)
 % Smoothing of linear states conditional on a complete trajectory of
 % non-linear states.
 % 
 % PARAMETERS
 %   x       Complete filtered state trajectory (including non-linear and 
 %           linear states)
-%   P       Covariances of the linear states
+%   Pz      Covariances of the linear states
 %   t       Time vector
 %   model   Model struct
 %
@@ -314,18 +315,19 @@ function [z_s, P_s] = smooth_linear(x, P, t, model)
 
     %% Initialize
     % Get nonlinear and linear states
+    % TODO: This should not be done here.
     s = x(model.in, :);
-    z = x(model.il, :);
+    mz = x(model.il, :);
     
     % Preallocate
-    [Nz, N] = size(z);
+    [Nz, N] = size(mz);
     Ns = size(s, 1);
-    z_s = zeros(Nz, N);
-    P_s = zeros(Nz, Nz, N);
+    mzs = zeros(Nz, N);
+    Pzs = zeros(Nz, Nz, N);
     
     % Initialize backward pass
-    z_s(:, N) = z(:, N);
-    P_s(:, :, N) = P(:, :, N);
+    mzs(:, N) = mz(:, N);
+    Pzs(:, :, N) = Pz(:, :, N);
     
     %% Backward Iteration
     for n = N-1:-1:1
@@ -334,67 +336,51 @@ function [z_s, P_s] = smooth_linear(x, P, t, model)
         G = model.Fn(s(:, n), t(n+1));
         h = model.fl(s(:, n), t(n+1));
         H = model.Fl(s(:, n), t(n+1));
-        msp = g + G*z(:, n);
-        mzp = h + H*z(:, n);
-        mp = [msp; mzp];
+        Q = model.Q(s(:, n), t(n+1));
+        mp = [g; h] + [G; H]*mz(:, n);           % m[n+1 | n]
+        Pp = [G; H]*Pz(:, :, n)*[G; H]' + Q;     % P[n+1 | n]
+        Pp = (Pp + Pp')/2;
+        Pc = Pz(:, :, n)*[G; H]';                % P[n,n+1 | n]
         
-        Qz = model.Ql(s(:, n), t(n+1));
-        Qs = model.Qn(s(:, n), t(n+1));
-        Qsz = model.Qnl(s(:, n), t(n+1));
-        
-        Pps = G*P(:, :, n)*G' + Qs;
-        Ppz = H*P(:, :, n)*H' + Qz;
-        Ppsz = G*P(:, :, n)*H' + Qsz;
-        Pp = [
-              Pps, Ppsz;
-            Ppsz',  Ppz;
-        ];
-        Ptmp = [
-            zeros(Ns, Ns), zeros(Ns, Nz); 
-            zeros(Nz, Ns), P_s(:, :, n+1);
-        ];
-
         % RTS update
-        L = P(:, :, n)*[G' H']/Pp;
-%        Lz = P(:, :, n)*H'/Pp;
-%        L = [Ls Lz];
-        z_s(:, n) = z(:, n) + L*([s(:, n+1); z_s(:, n+1)] - mp);
-        P_s(:, :, n) = P(:, :, n) + L*(Ptmp - Pp)*L';
-%        S = Qz + H*P(:, :, n)*H';
-%        L = P(:, :, n)*H'/S;
-%        z_s(:, n) = z(:, n) + L*(z_s(:, n+1) - mzp);
-%        P_s(:, :, n) = P(:, :, n) + L*(P_s(:, :, n+1) - S)*L';
+        M = Pc/Pp;
+        mzs(:, n) = mz(:, n) + M*([s(:, n+1); mzs(:, n+1)] - mp);
+        Pdash = [
+            zeros(Ns, Ns), zeros(Ns, Nz); 
+            zeros(Nz, Ns), Pzs(:, :, n+1);
+        ];
+        Pzs(:, :, n) = Pz(:, :, n) + M*(Pdash - Pp)*M';
+        Pzs(:, :, n) = (Pzs(:, :, n) + Pzs(:, :, n)')/2;
     end
 end
 
 %% Sampling
-function sp = draw_samples(s, z, P, t, model)
+function sp = draw_samples(s, mz, Pz, t, model)
 % Draws new samples from the marginalized nonlinear dynamics.
 %
 % PARAMETERS
 %   s       Old samples, s[n-1]
-%   z       Mean of conditionally linear states at n-1, z[n-1]
-%   P       Covariance of contidionally linear states at n-1, P[n-1]
+%   mz      Mean of conditionally linear states at n-1, z[n-1]
+%   Pz      Covariance of contidionally linear states at n-1, P[n-1]
 %   t       Time t[n]
 %   model   Model struct
 %
 % RETURNS
 %   sp      New samples, s[n]
 
-    [Ns, M] = size(s);
-    
     % Get dynamics
     g = model.fn(s, t);
     G = model.Fn(s, t);
     Qs = model.Qn(s, t);
     
     % Marginalization
-    m = g + G*z;
-    C = Qs + G*P*G';
+    msp = g + G*mz;
+    Psp = Qs + G*Pz*G';
+    Psp = (Psp+Psp')/2;
     
     % Generate samples
-    LC = chol(C).';
-    sp = m + LC*randn(Ns, M);
+    LPsp = chol(Psp).';
+    sp = msp + LPsp*randn(size(s));
 end
 
 %% Ancestor Weights
@@ -420,6 +406,7 @@ function lv = calculate_ancestor_weights(sbar, s, z, P, t, lw, model, Nbar)
     lv = lw;                    % Initialize ancestor weights with prior
     
     %% First Step
+    % TODO: The first step can be merged into the loop by augmenting sbar
     % These are zbar[n-1], Pbar[n-1]
     zbar = z;
     Pbar = P;
@@ -445,6 +432,7 @@ function lv = calculate_ancestor_weights(sbar, s, z, P, t, lw, model, Nbar)
     K = (Qzs + H*Pbar*G')/S;
     zbar = h + H*zbar + K*(sbar(:, 1)*ones(1, M) - g - G*zbar);
     Pbar = Qz + H*Pbar*H' - K*S*K';
+    Pbar = (Pbar + Pbar')/2;
     
     %% Update for j > n
     for j = 2:Nbar
@@ -462,6 +450,7 @@ function lv = calculate_ancestor_weights(sbar, s, z, P, t, lw, model, Nbar)
         % p(s_j | \bar{s}_{n:j-1}, s_{1:n-1}, y_{1:n-1})
         m = g + G*zbar;
         C = Qs + G*Pbar*G';
+        C = (C+C')/2;
         lv = lv + logmvnpdf((sbar(:, j)*ones(1, M)).', m.', C.').';
         
         %% KF Update
@@ -470,26 +459,25 @@ function lv = calculate_ancestor_weights(sbar, s, z, P, t, lw, model, Nbar)
         K = (Qzs + H*Pbar*G')/S;
         zbar = h + H*zbar + K*(sbar(:, j)*ones(1, M) - g - G*zbar);
         Pbar = Qz + H*Pbar*H' - K*S*K';
+        Pbar = (Pbar+Pbar')/2;
     end
 end
 
 %% Kalman Filter Update
-% 
-function [zp, Pp] = kf_update(z, P, sp, s, t, model)
-% Kalman filter update. Note that this is essentially only a prediction
-% since the likelihood doesn't depend on z[n].
+function [mzp, Pzp] = kf_predict(mz, Pz, sp, s, t, model)
+% Kalman filter prediction and pseudo update
 %
 % PARAMETERS
-%   z       State z[n-1]
-%   P       Covariance P[n-1]
+%   mz      Mean m[n-1 | n-1]
+%   Pz      Covariance P[n-1 | n-1]
 %   sp      New samples of the non-linear states, s[n]
 %   s       Old samples of the non-linear states, s[n-1]
 %   t       Time
 %   model   The model struct
 %
 % RETURNS
-%   zp      Updated state z[n]
-%   Pp      Updated covariance P[n]
+%   mzp     Updated state m[n | n-1]
+%   Pzp     Updated covariance P[n | n-1]
 
     % Get dynamics; none of Q, G, and H depend on s[n-1]; hence, we can
     % calculate everything efficiently. Nothing depends on 
@@ -502,9 +490,9 @@ function [zp, Pp] = kf_update(z, P, sp, s, t, model)
     Qzs = model.Qnl(s, t)';
 
     % Prediction
-    S = Qs + G*P*G';
-    K = (Qzs + H*P*G')/S;
-    zp = h + H*z + K*(sp - g - G*z);
-    Pp = Qz + H*P*H' - K*S*K';
-    Pp = (Pp+Pp')/2;
+    S = Qs + G*Pz*G';
+    K = (Qzs + H*Pz*G')/S;
+    mzp = h + H*mz + K*(sp - g - G*mz);
+    Pzp = Qz + H*Pz*H' - K*S*K';
+    Pzp = (Pzp+Pzp')/2;
 end
