@@ -384,14 +384,14 @@ function sp = draw_samples(s, mz, Pz, t, model)
 end
 
 %% Ancestor Weights
-function lv = calculate_ancestor_weights(sbar, s, z, P, t, lw, model, Nbar)
+function lv = calculate_ancestor_weights(sbar, s, mz, Pz, t, lw, model, Nbar)
 % Calculates the ancestor weights for the seed trajectory.
 %
 % PARAMETERS
 %   sbar    Seed trajectory from n to N, i.e. bar{s}_{n:N} (Nx*(N-n+1))
 %   s       Ancestor states s_{n-1} (Ns*M)
-%   z       Mean of linear states at n-1 (Nz*M)
-%   P       Covariance of linear states at n-1 (Nz*Nz)
+%   mz      Mean of linear states at n-1 (Nz*M)
+%   Pz      Covariance of linear states at n-1 (Nz*Nz)
 %   t       Time from t[n] to t[N] (1*(N-n+1))
 %   lw      Log of weights log(w[n-1]) (1*M)
 %   model   The model struct
@@ -402,64 +402,40 @@ function lv = calculate_ancestor_weights(sbar, s, z, P, t, lw, model, Nbar)
 
     %% Initialize
     Nbar = min(Nbar, size(sbar, 2));
-    M = size(s, 2);
+    [Ns, M] = size(s);
+    Nz = size(mz, 1);
+    in = 1:Ns;
+    il = Ns+(1:Nz);
     lv = lw;                    % Initialize ancestor weights with prior
     
-    %% First Step
-    % TODO: The first step can be merged into the loop by augmenting sbar
-    % These are zbar[n-1], Pbar[n-1]
-    zbar = z;
-    Pbar = P;
-    
-    % For convenience
-    g = model.fn(s, t(1));
-    G = model.Fn(s, t(1));
-    h = model.fl(s, t(1));
-    H = model.Fl(s, t(1));
-    Q = model.Q(s, t(1));
-    Qs = Q(model.in, model.in);
-    Qz = Q(model.il, model.il);
-    Qzs = Q(model.il, model.in);
-    
-    % Calculate marginalized prediction p(\bar{s}_n | s_{1:n-1}, y_{1:n-1})
-    m = g + G*zbar;
-    C = Qs + G*Pbar*G';
-    lv = lv + logmvnpdf((sbar(:, 1)*ones(1, M)).', m.', C).';
-    
-    %% KF Update
-    % Calculate p(z_n | \bar{s}_n, s_{1:n-1}, y_{1:n-1})
-    S = Qs + G*Pbar*G';
-    K = (Qzs + H*Pbar*G')/S;
-    zbar = h + H*zbar + K*(sbar(:, 1)*ones(1, M) - g - G*zbar);
-    Pbar = Qz + H*Pbar*H' - K*S*K';
-    Pbar = (Pbar + Pbar')/2;
-    
-    %% Update for j > n
-    for j = 2:Nbar
-        % For convenience
-        g = model.fn(sbar(:, j-1), t(j))*ones(1, M);
-        G = model.Fn(sbar(:, j-1), t(j));
-        h = model.fl(sbar(:, j-1), t(j))*ones(1, M);
-        H = model.Fl(sbar(:, j-1), t(j));
-        Q = model.Q(sbar(:, j-1), t(j));
-        Qs = Q(model.in, model.in);
-        Qz = Q(model.il, model.il);
-        Qzs = Q(model.il, model.in);
+    %% Recursively calculate weight
+    for j = 1:Nbar
+        %% Prediction
+        g = model.fn(s, t(j));
+        G = model.Fn(s, t(j));
+        h = model.fl(s, t(j));
+        H = model.Fl(s, t(j));
+        Q = model.Q(s, t(j));
+        
+        % Prediction
+        mp = [g; h] + [G; H]*mz;
+        Pp = [G; H]*Pz*[G; H]' + Q;
+        Pp = (Pp+Pp')/2;
         
         % Calculate marginal prediction
         % p(s_j | \bar{s}_{n:j-1}, s_{1:n-1}, y_{1:n-1})
-        m = g + G*zbar;
-        C = Qs + G*Pbar*G';
-        C = (C+C')/2;
-        lv = lv + logmvnpdf((sbar(:, j)*ones(1, M)).', m.', C.').';
+        sp = sbar(:, j)*ones(1, M);
+        lv = lv + logmvnpdf(sp.', mp(in, :).', Pp(in, in).').';
         
         %% KF Update
         % Calculate p(z_j | \bar{s}_{n:j-1}, s_{1:n-1}, y_{1:n-1})
-        S = Qs + G*Pbar*G';
-        K = (Qzs + H*Pbar*G')/S;
-        zbar = h + H*zbar + K*(sbar(:, j)*ones(1, M) - g - G*zbar);
-        Pbar = Qz + H*Pbar*H' - K*S*K';
-        Pbar = (Pbar+Pbar')/2;
+        K = Pp(il, in)/Pp(in, in);
+        mz = mp(il, :) + K*(sp - mp(in, :));
+        Pz = Pp(il, il) - K*Pp(in, in)*K';
+        Pz = (Pz + Pz')/2;
+        
+        % Next iteration's s is this iteration's sp
+        s = sp;
     end
 end
 
