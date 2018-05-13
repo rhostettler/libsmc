@@ -2,8 +2,8 @@ function [x, sys] = cpfas(y, t, model, xt, q, M, par)
 % Conditional Particle Filter with Ancestor Sampling
 %
 % USAGE
-%   x = cpfas(y, t, model)
-%   [x, sys] = cpfas(y, t, model, xt, q, M, par)
+%   x = CPFAS(y, t, model)
+%   [x, sys] = CPFAS(y, t, model, xt, q, M, par)
 % 
 % DESCRIPTION
 %   
@@ -33,12 +33,7 @@ function [x, sys] = cpfas(y, t, model, xt, q, M, par)
 
 % TODO
 %   * Documentation
-%   * Implement similar 0:N as in gprbpgas
-%   * There seems to be a problem with the naming convention for the
-%     samples in the particle system among the different methods (sys.x,
-%     sys.w vs sys.xf, sys.wf)
 %   * Implement rejection sampling-based ancestor index sampling
-%   * Maybe replace par with xt? That seems more appropriate.
 
     %% Parameter check & defaults
     % Check that we get the correct no. of parameters and a well-defined
@@ -131,7 +126,7 @@ function [x, sys] = cpfas(y, t, model, xt, q, M, par)
             alpha(M) = sample_ancestor_index(xt(:, n), x, t(n), lw, model);
         else
             % Ancestor sampling based on rejection sampling
-            [alpha(M), rs(n)] = sample_ancestor_index_rs(xt(:, n), x, t(n), lw, model, alpha);
+            [alpha(M), rs(n)] = sample_ancestor_index_rs(xt(:, n), x, t(n), lw, model);
         end
         
         %% Calculate weights

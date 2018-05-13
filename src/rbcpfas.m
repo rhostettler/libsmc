@@ -90,6 +90,7 @@ function [x, sys] = rbcpfas(y, t, model, xt, M, par)
 %     which have to be considered.
 %   * Assumes bootstrap proposal
 %   * Handling of the linear states is hacky at best
+%   * Add possiblity to add sampling function (importance density; see cpfas)
 
 % NOTES
 %   * Assumes implicitly that G, H, and Q don't depend on s[n-1] which
