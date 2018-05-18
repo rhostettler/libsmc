@@ -1,81 +1,95 @@
-function [xhat, Phat, sys] = wiener_2bfs(y, t, model, M, par, sys)
-% Two filter particle smoother for degenerate Wiener state space systems
+function [xhat, sys] = wiener_2bfs(y, t, model, M, par)
+% Two-Filter Bootstrap Particle Smoother for Wiener state-space models
 % 
-% SYNOPSIS
-% 
+% USAGE
+%   xhat = WIENER_2BFS(y, t, model)
+%   [xhat, sys] = WIENER_2BFS(y, t, model, M, par, sys)
 %
 % DESCRIPTION
-%   EKF-like linearization for now.
+%   
 %
 % PARAMETERS
 % 
 %
 % RETURNS
 %
-%
-% SEE ALSO
-%
-%
-% VERSION
-%   2017-03-28
 % 
 % AUTHORS
-%   Roland Hostettler <roland.hostettler@aalto.fi>   
+%   2018-05-18 -- Roland Hostettler <roland.hostettler@aalto.fi>   
    
     %% Defaults & Checks
-    narginchk(3, 6);
-    
-    % Set default particle numbers
+    narginchk(3, 5);
     if nargin < 4 || isempty(M)
         M = 100;
     end
-    
-    % Default parameters
     if nargin < 5
         par = [];
     end
+    def = struct();
+    par = parchk(par, def);
     
-    % Check if a filtered particle system is provided
-    if nargin < 6 || isempty(sys)
-        filter = 0;
-    else
-        filter = 1;
-    end
+    %% Process data
+    t = [0, t];
+    y = [NaN*ones(size(y, 1), 1), y];
+    sys = filter(y, t, model, M, par);
+    [xhat, sys] = smooth(y, t, model, M, par, sys);
+end
+
+%% Forward filter
+function sys = filter(y, t, model, M, par)
+    %% Bootstrap proposal
+    q = struct();
+    q.fast = model.px.fast;
+    q.logpdf = @(xp, y, x, t) model.px.logpdf(xp, x, t);
+    q.rand = @(y, x, t) model.px.rand(x, t);
     
-    %% Filter
-    % If no filtered system is provided, run a bootstrap PF
-    if ~filter
-        [~, ~, sys] = bootstrap_pf(y, t, model, M, par);
-    end
+    %% Initialize
+    x = model.px0.rand(M);
+    lw = log(1/M)*ones(1, M);
     
-    %% Forward Stats
-    % Inefficient, but hey!
-    [Nx, ~, N] = size(sys.x);
-    mu_x = zeros(Nx, N+1);
-    Sigma_x = zeros(Nx, Nx, N+1);
-    mu_x(:, 1) = model.m0;
-    Sigma_x(:, :, 1) = model.P0;
-    for n = 1:N
+    %% Preallocate
+    Nx = size(x, 1);
+    N = length(t);
+    sys = initialize_sys(N, Nx, M);
+    sys(1).x = x;
+    sys(1).w = exp(lw);
+    sys(1).alpha = 1:M;
+    sys(1).r = false;
+    sys(1).mu = model.m0;
+    sys(1).Sigma = model.P0;
+    
+    %% Process data
+    for n = 2:N
+        % Resample
+        [alpha, lw, r] = resample_ess(lw, par);
+        
+        % Draw new samples
+        xp = sample_q(y(:, n), x(:, alpha), t(n), q);
+        
+        % Calculate weights
+        lv = calculate_incremental_weights_bootstrap(y(:, n), xp, x, t(n), model, q);
+        lw = lw+lv;
+        lw = lw-max(lw);
+        w = exp(lw);
+        w = w/sum(w);
+        lw = log(w);
+        x = xp;
+        
+        % Calculate prior
         F = model.F(t(n));
         Q = model.Q(t(n));
-        mu_x(:, n+1) = F*mu_x(:, n);
-        Sigma_x(:, :, n+1) = F*Sigma_x(:, :, n)*F' + Q;
-    end
-    mu_x = mu_x(:, 2:n+1);
-    Sigma_x = Sigma_x(:, :, 2:n+1);
-    
-    %% Smoothing
-    switch nargout
-        case {0, 1, 2}
-            [xhat, Phat] = smooth(y, t, model, M, par, sys, mu_x, Sigma_x);
-        case 3
-            [xhat, Phat, sys] = smooth(y, t, model, M, par, sys, mu_x, Sigma_x);
-        otherwise
-            error('Incorrect number of output arguments');
+        sys(n).mu = F*sys(n-1).mu;
+        sys(n).Sigma = F*sys(n-1).Sigma*F' + Q;
+        
+        % Store
+        sys(n).x = x;
+        sys(n).w = w;
+        sys(n).alpha = alpha;
+        sys(n).r = r;
     end
 end
 
-%% 
+%% Backward filter and smoothing
 function [xhat, Phat, sys] = smooth(y, t, model, M, par, sys, mu_x, Sigma_x)
     py = model.py;
 
