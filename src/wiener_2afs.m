@@ -1,4 +1,4 @@
-function [xhat, Phat, sys] = wiener_2afs(y, t, model, M, par, sys)
+function [xhat, Phat, sys] = wiener_2afs(y, t, model, Mf, Ms, par, sys)
 % Two filter particle smoother for Wiener state space systems
 % 
 % SYNOPSIS
@@ -26,17 +26,25 @@ function [xhat, Phat, sys] = wiener_2afs(y, t, model, M, par, sys)
     narginchk(3, 6);
     
     % Set default particle numbers
-    if nargin < 4 || isempty(M)
-        M = 100;
+    if nargin < 4 || isempty(Mf)
+        Mf = 100;
+    end
+    
+    if nargin < 5 || isempty(Ms)
+        Ms = Mf;
+    end
+    
+    if Ms ~= Mf
+        error('Sorry, not implemented yet.');
     end
     
     % Default parameters
-    if nargin < 5
+    if nargin < 6
         par = [];
     end
     
     % Check if a filtered particle system is provided
-    if nargin < 6 || isempty(sys)
+    if nargin < 7 || isempty(sys)
         filter = 0;
     else
         filter = 1;
@@ -45,7 +53,7 @@ function [xhat, Phat, sys] = wiener_2afs(y, t, model, M, par, sys)
     %% Filter
     % If no filtered system is provided, run a bootstrap PF
     if ~filter
-        [~, ~, sys] = wiener_gaapf(y, t, model, M, par);
+        [~, ~, sys] = wiener_gaapf(y, t, model, Mf, par);
     end
     
     %% Forward Stats
@@ -67,42 +75,42 @@ function [xhat, Phat, sys] = wiener_2afs(y, t, model, M, par, sys)
     %% Smoothing
     switch nargout
         case {0, 1, 2}
-            [xhat, Phat] = smooth(y, t, model, M, par, sys, mu_x, Sigma_x);
+            [xhat, Phat] = smooth(y, t, model, Ms, par, sys, mu_x, Sigma_x);
         case 3
-            [xhat, Phat, sys] = smooth(y, t, model, M, par, sys, mu_x, Sigma_x);
+            [xhat, Phat, sys] = smooth(y, t, model, Ms, par, sys, mu_x, Sigma_x);
         otherwise
             error('Incorrect number of output arguments');
     end
 end
 
 %% 
-function [xhat, Phat, sys] = smooth(y, t, model, M, par, sys, mu_x, Sigma_x)
+function [xhat, Phat, sys] = smooth(y, t, model, Ms, par, sys, mu_x, Sigma_x)
     py = model.py;
 
     %% Preallocate
-    [Nx, M, N] = size(sys.x);
+    [Nx, Mf, N] = size(sys.x);
     xhat = zeros(Nx, N);
     Phat = zeros(Nx, Nx, N);
     if nargout == 3
-        sys.xs = zeros(Nx, M, N);
-        sys.wb = zeros(1, M, N);
-        sys.lwb = zeros(1, M, N);
-        sys.ws = zeros(1, M, N);
-        sys.lws = zeros(1, M, N);
+        sys.xs = zeros(Nx, Ms, N);
+        sys.wb = zeros(1, Ms, N);
+        sys.lwb = zeros(1, Ms, N);
+        sys.ws = zeros(1, Ms, N);
+        sys.lws = zeros(1, Ms, N);
     end
     
     % Recurring temporary variables
     % TODO: sort out
     Ny = size(y, 1);
-    mu_xb = zeros(Nx, M);
-    mu_yb = zeros(Ny, M);
-    B = zeros(Nx, Ny, M);
-    S = zeros(Ny, Ny, M);
+    mu_xb = zeros(Nx, Ms);
+    mu_yb = zeros(Ny, Ms);
+    B = zeros(Nx, Ny, Ms);
+    S = zeros(Ny, Ny, Ms);
     
-    lv = zeros(1, M);
+    lv = zeros(1, Mf);
 
     %% Initialize Backward Filter
-    for m = 1:M
+    for m = 1:Mf
         lv(:, m) = logmvnpdf(sys.x(:, m, N).', mu_x(:, N).', Sigma_x(:, :, N)).' ...
             + py.logpdf(y(:, N), sys.x(:, m, N), t(N)) - sys.lw(:, m, N);
     end
@@ -110,10 +118,10 @@ function [xhat, Phat, sys] = smooth(y, t, model, M, par, sys, mu_x, Sigma_x)
     v = v/sum(v); 
     beta = sysresample(v);
     xs = sys.x(:, beta, N);
-    lwb = log(1/M)*ones(1, M);
-    wb = 1/M*ones(1, M);
-    lws = log(1/M)*ones(1, M);
-    ws = 1/M*ones(1, M);
+    lwb = log(1/Ms)*ones(1, Ms);
+    wb = 1/Ms*ones(1, Ms);
+    lws = log(1/Ms)*ones(1, Ms);
+    ws = 1/Ms*ones(1, Ms);
     xhat(:, N) = mean(xs, 2);
     
     % Store the particle system
@@ -136,7 +144,7 @@ function [xhat, Phat, sys] = smooth(y, t, model, M, par, sys, mu_x, Sigma_x)
         L = F*Sigma*F' + Q;
         K = Sigma*F'/L;
         Sigma_xb = Sigma - K*L*K';
-        for m = 1:M
+        for m = 1:Ms
             mu_xb(:, m) = mu + K*(xs(:, m) - F*mu);
             [mu_yb(:, m), S(:, :, m), B(:, :, m)] = calculate_moments(mu_xb(:, m), t, model);
             lv(m) = lwb(m) + logmvnpdf(y(:, n).', mu_yb(:, m).', S(:, :, m)).';
@@ -147,7 +155,7 @@ function [xhat, Phat, sys] = smooth(y, t, model, M, par, sys, mu_x, Sigma_x)
         beta = sysresample(v);
 
         % Draw new Samples
-        for m = 1:M
+        for m = 1:Ms
             % TODO: These things could be calculated in the above for loop
             %       too.
             % Draw a new particle
@@ -176,10 +184,10 @@ function [xhat, Phat, sys] = smooth(y, t, model, M, par, sys, mu_x, Sigma_x)
             w = sys.w(:, :, n-1);
         else
             x = sys.x0;
-            w = 1/M*ones(1, M);
+            w = 1/Mf*ones(1, Mf);
         end
-        nu = zeros(1, M);
-        for m = 1:M
+        nu = zeros(1, Ms);
+        for m = 1:Ms
             nu(m) = w*mvnpdf(xs(:, m).', (F*x).', Q);
 %             tmp = lw + logmvnpdf(xs(:, m).', (F*x).', Q).';
 %             lnu(m) = log(sum(exp(tmp)));
