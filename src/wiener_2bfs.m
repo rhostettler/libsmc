@@ -23,8 +23,8 @@ function [xhat, sys] = wiener_2bfs(y, t, model, M, par)
 %   sys     Particle system structure (array of structs).
 %
 % REFERENCES
-%   [1] R. Hostettler, “A two filter particle smoother for Wiener state-
-%       space systems,” in IEEE Conference on Control Applications (CCA),
+%   [1] R. Hostettler, "A two filter particle smoother for Wiener state-
+%       space systems," in IEEE Conference on Control Applications (CCA),
 %       Sydney, Australia, September 2015.
 % 
 % AUTHORS
@@ -150,7 +150,8 @@ function [xhat, sys] = smooth(y, t, model, M, par, sys)
         F = model.F(t(n+1));
         K = sys(n).Sigma*F'/sys(n+1).Sigma;
         mu = sys(n).mu*ones(1, M) + K*(x(:, alpha) - sys(n+1).mu*ones(1, M));
-        Sigma = sys(n).Sigma - K*sys(n).Sigma*K';
+        Sigma = sys(n).Sigma - K*sys(n+1).Sigma*K';
+        Sigma = (Sigma+Sigma')/2;
         xp = mu + chol(Sigma).'*randn(Nx, M);
         
         % Calculate backward filter weights
