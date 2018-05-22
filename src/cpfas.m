@@ -66,6 +66,12 @@ function [x, sys] = cpfas(y, t, model, xt, q, M, par)
 %     );
 %     par = parchk(par, def);
 
+    % Prepend t[0] to t and y
+    [Ny, N] = size(y);
+    N = N+1;
+    t = [0, t];
+    y = [NaN*ones(Ny, 1), y];
+
     %% Initialize seed trajectory
     % If no trajectory is given (e.g. for the first iteration), we draw an
     % initial trajectory from a bootstrap particle filter which should help
@@ -77,12 +83,11 @@ function [x, sys] = cpfas(y, t, model, xt, q, M, par)
         % the y and t vectors. Right now, gibbs_pmcmc adds a zero in t, but
         % nothing in y. This seems broken, but removing it at this point
         % looks like it will break parameter sampling.
-        [~, sys] = bootstrap_pf(y, t(2:end), model, M);
+        [~, sys] = bootstrap_pf(y(:, 2:end), t(2:end), model, M);
         beta = sysresample(sys(end).wf);
         j = beta(randi(M, 1));
         % TODO: this is slow; need to figure out a better way
-        N = length(sys);
-        xt = zeros(size(sys(1).xf, 1), length(sys));
+        xt = zeros(size(sys(1).xf, 1), N);
         for n = 1:N
             xt(:, n) = sys(n).xf(:, j);
         end
@@ -90,12 +95,6 @@ function [x, sys] = cpfas(y, t, model, xt, q, M, par)
     
     %% Prepare and preallocate
     Nx = size(model.px0.rand(1), 1);
-    [Ny, N] = size(y);
-    N = N+1;
-    
-    % Prepend t[0] to t and y
-    t = [0, t];
-    y = [NaN*ones(Ny, 1), y];
     
     % Preallocate
     sys = initialize_sys(N, Nx, M);

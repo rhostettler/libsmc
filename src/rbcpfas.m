@@ -91,6 +91,7 @@ function [x, sys] = rbcpfas(y, t, model, xt, M, par)
 %   * Assumes bootstrap proposal
 %   * Handling of the linear states is hacky at best
 %   * Add possiblity to add sampling function (importance density; see cpfas)
+%   * Replace initialize() with a rbsisr or something similar.
 
 % NOTES
 %   * Assumes implicitly that G, H, and Q don't depend on s[n-1] which
@@ -109,12 +110,16 @@ function [x, sys] = rbcpfas(y, t, model, xt, M, par)
     
     [Ny, N] = size(y);
     if isempty(t)
-        t = 0:N;
+        t = 1:N;
     end
     def = struct( ...
         'Nbar', N ...  % Truncation length for calculating the ancestor weigths; 
     );
     par = parchk(par, def);
+    
+    % Prepend t[0] and pseudo (no) measurement
+    t = [0, t];
+    y = [NaN*ones(Ny, 1), y];
     
     %% Preallocate
     in = model.in;
@@ -125,6 +130,7 @@ function [x, sys] = rbcpfas(y, t, model, xt, M, par)
     Nz = length(il);
     Nx = Ns+Nz;
     N = N+1;                            % +1 to include x[0]
+    xp = zeros(Nx, M);
         
     %% Seed Trajectory
     if nargin < 4 || isempty(xt) || sum(sum(xt)) == 0
@@ -139,8 +145,6 @@ function [x, sys] = rbcpfas(y, t, model, xt, M, par)
     sys(N).P = zeros(Nx, Nx, M);
     
     %% Initialize
-    % Prepend t_0 and no measurement
-    y = [NaN*ones(Ny, 1), y];
     
     % Initial samples
     m0 = model.m0;
@@ -178,6 +182,8 @@ function [x, sys] = rbcpfas(y, t, model, xt, M, par)
         [zp, Pp] = kf_predict(z(:, alpha), P, sp, s(:, alpha), t(n), model);
                 
         % Particle weights
+        xp(in, :) = sp;     % TODO: Same workaround here as in the initialization
+        xp(il, :) = zp;
         lw = calculate_incremental_weights_bootstrap(y(:, n), sp, s(:, alpha), t(n), model, []);
 
         % Normalize weights and update particles
@@ -239,14 +245,13 @@ function x = initialize(y, t, model, M)
     Nz = length(il);
     Nx = Ns+Nz;
     [Ny, N] = size(y);
-    N = N+1;
-    
+        
     % Stores the full trajectories
     alphaf = zeros(1, M, N);    % Ancestor indices
     xf = zeros(Nx, M, N);       % Trajectories
+    xp = zeros(Nx, M);
     
     %% Initialize
-    y = [zeros(Ny, 1), y];
     m0 = model.m0;
     P0 = model.P0;
     s = m0(in)*ones(1, M) + chol(P0(in, in)).'*randn(Ns, M);
@@ -268,6 +273,8 @@ function x = initialize(y, t, model, M)
         [zp, Pp] = kf_predict(z(:, alpha), P, sp, s(:, alpha), t(n), model);
                 
         % Particle weights
+        xp(in, :) = sp;    % TODO: This is a work-around to make py.logpdf work; not really generic!
+        xp(il, :) = zp;
         lw = calculate_incremental_weights_bootstrap(y(:, n), sp, s(:, alpha), t(n), model, []);
 
         % Normalize weights and update particles

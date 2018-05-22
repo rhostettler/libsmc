@@ -106,9 +106,7 @@ function [x, theta, sys] = gibbs_pmcmc(y, t, model, theta0, K, par)
     % Calculate no. of runs
     Kmcmc = par.Kburnin + 1+(K-1)*par.Kmixing;
 
-    %% Initialize
-    t = [0, t];
-    
+    %% Initialize    
     % State of Metropolis-within-Gibbs sampler
     state = [];
     
