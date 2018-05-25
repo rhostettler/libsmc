@@ -1,38 +1,32 @@
-function par = parchk(par, def)
-% Check function parameters and set defaults
+function out = parchk(in, defaults)
+% Validate function parameters
 %
-% SYNOPSIS
-%   par = parchk(par, def)
+% USAGE
+%   outpar = PARCHK(inpar, defaults)
 %
 % DESCRIPTION
-%   
+%   Validates a set of function parameters, that is, checks for missing
+%   parameters, sets defaults, and complains about missing parameters.
+%   Parameters are name-value pairs.
 %
 % PARAMETERS
-%   par
+%   in          Parameters to validate.
+%   defaults    Default parameters.
 %
-%   def
-%
-% VERSION
-%   2017-03-23
+% RETURNS
+%   out         Validated parameters.
 %
 % AUTHORS
-%   Roland Hostettler <roland.hostettler@aalto.fi>
-
-% TODO:
-%   * Include the possibility of specifying other attributes such as range
-%     of the parameters.
+%   2017-2018 -- Roland Hostettler <roland.hostettler@aalto.fi>
 
     narginchk(2, 2);
-    if isempty(par)
-        % If no options are set, use the default ones...
-        par = def;
-    else
-        % ...otherwise, copy the missing ones
-        fields = fieldnames(def);
-        for i = 1:length(fields)
-            if ~isfield(par, fields{i})
-                par.(fields{i}) = def.(fields{i});
-            end
+    out = defaults;
+    fields = fieldnames(in);
+    for i = 1:length(fields)
+        if isfield(defaults, fields{i})
+            out.(fields{i}) = in.(fields{i});
+        else
+            warning('Discarding unknown parameter ''%s''.', fields{i});
         end
     end
 end
