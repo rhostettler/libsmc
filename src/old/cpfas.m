@@ -26,6 +26,26 @@ function [xhat, Phat, sys] = cpfas(y, t, model, q, M, par)
 %   * Move 'calculate_incremental_weights()' and possibly 'draw_samples()' 
 %     out of function; combine it with 'sisr_pf()'
 
+%% From gibbs_pmcmc => Draws a new state trajectory
+% TODO: cpfas needs to be improved as follows to be directly compatible
+%   * cpfas does not return the initial state 
+%   * cpfas returns all trajectories, but we need to return only one
+%   * We need to fix those things before removing this function
+error('FIXME, lots to do here!');
+if 0
+function x = sample_trajectory(y, x, t, theta_f, theta_y, create_model, par)
+    % Crate a new model with updated parameters and set seed trajectory
+    model = create_model([theta_f; theta_y]);
+    par.xt = x;
+    
+    % Run CPF & draw trajectory
+    [~, ~, sys] = cpfas(y, t, model, [], par.M, par);    
+    beta = sysresample(sys.wf);
+    j = beta(randi(par.M, 1));
+    x = squeeze(sys.xf(:, j, :));
+end
+end
+
     %% Parameter check & defaults
     % Check that we get the correct no. of parameters and a well-defined
     % model so that we can detect model problems already here.
