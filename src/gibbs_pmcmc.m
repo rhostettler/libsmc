@@ -1,8 +1,8 @@
-function [x, theta, sys] = gibbs_pmcmc(y, t, model, theta0, K, par)
+function [xs, thetas] = gibbs_pmcmc(y, t, model, theta0, K, par)
 % Particle Gibbs Markov chain Monte Carlo sampler
 %
 % SYNOPSIS
-%   [x, theta] = gibbs_pmcmc(y, t, model, K, theta0, par)
+%   [x, theta] = GIBBS_PMCMC(y, t, model, K, theta0, par)
 %
 % DESCRIPTION
 %   Particle Markov chain Monte Carlo Gibbs sampler for generating samples
@@ -65,7 +65,7 @@ function [x, theta, sys] = gibbs_pmcmc(y, t, model, theta0, K, par)
 % REFERENCES
 %   [1] C. Andrieu, A. Doucet, and R. Holenstein, "Particle Markov chain
 %       Monte Carlo methods," Journal of the Royal Statistical Society: 
-%       Series B (Statistical Methodology), vol. 72, no. 3, pp. 269???342, 
+%       Series B (Statistical Methodology), vol. 72, no. 3, pp. 269-342, 
 %       2010.
 %
 %   [2] F. Lindsten, M. I. Jordan, and T. B. Schon, "Particle Gibbs with
@@ -73,13 +73,12 @@ function [x, theta, sys] = gibbs_pmcmc(y, t, model, theta0, K, par)
 %       pp. 2145-2184, 2014.
 % 
 % AUTHORS
-%   2017-10-04 -- Roland Hostettler <roland.hostettler@aalto.fi>
+%   2017-2018 -- Roland Hostettler <roland.hostettler@aalto.fi>
 
 % TODO:
 %   * There's still confusion about using both 'create_model' and theta in
 %     the different methods. That should be sorted out somehow by the model
 %     things
-%   * Returning particle system is broken-ish
 
     %% Defaults
     narginchk(3, 6);
@@ -111,44 +110,37 @@ function [x, theta, sys] = gibbs_pmcmc(y, t, model, theta0, K, par)
     state = [];
     
     % Preallocate
-    Ntheta = size(theta0, 1);
-    x = [];
-    theta = [theta0, zeros(Ntheta, Kmcmc)];
+    xs = [];
+    thetas = theta0*ones(1, Kmcmc+1);
 
     %% MCMC sampling
     for k = 2:Kmcmc+1
         % Sample trajectory
-        % TODO: sys should be handled correctly!
         if ~isempty(par.sample_states)
-            [xtmp, tmp] = par.sample_states(y, t, x(:, :, k-1), theta(:, 1:k-1), model(theta(:, k-1)));
+            x = par.sample_states(y, t, xs(:, :, k-1), thetas(:, 1:k-1), model(thetas(:, k-1)));
             if k == 2
-                x = zeros([size(xtmp), Kmcmc+1]);
-                sys = repmat(tmp, [1, Kmcmc+1]);
+                xs = zeros([size(x), Kmcmc+1]);
             end
-            sys(:, k) = tmp;
-            x(:, :, k) = xtmp;
+            xs(:, :, k) = x;
         else
             error('No state sampling method provided.');
         end
         
         % Sample parameters
         if ~isempty(par.sample_parameters)
-            [theta(:, k), state] = par.sample_parameters(y, t, x(:, :, k), theta(:, 1:k-1), model, state);
-        else
-            theta(:, k) = theta(:, k-1);
+            [thetas(:, k), state] = par.sample_parameters(y, t, xs(:, :, k), thetas(:, 1:k-1), model, state);
         end
         
         % Show progress
         if ~isempty(par.show_progress)
-            par.show_progress((k-1)/Kmcmc, x(:, :, 1:k), theta(:, 1:k));
+            par.show_progress((k-1)/Kmcmc, xs(:, :, 1:k), thetas(:, 1:k));
         end
     end
     
     %% Post-processing
     % Strip burn-in, and mixing
-    x = x(:, :, par.Kburnin+2:par.Kmixing:Kmcmc+1);
-    sys = sys(:, par.Kburnin+2:Kmcmc+1);
-    if ~isempty(theta)
-        theta = theta(:, par.Kburnin+2:par.Kmixing:Kmcmc+1);
+    xs = xs(:, :, par.Kburnin+2:par.Kmixing:Kmcmc+1);
+    if ~isempty(thetas)
+        thetas = thetas(:, par.Kburnin+2:par.Kmixing:Kmcmc+1);
     end
 end
