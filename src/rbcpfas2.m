@@ -1,4 +1,4 @@
-function [x, sys] = gpsmc_rbcpfas(y, t, model, xt, M, par)
+function [x, sys] = rbcpfas2(y, t, model, xt, M, par)
 % Rao-Blackwellized conditional particle filter for mixed CLGSS models
 %
 % SYNOPSIS
@@ -417,8 +417,11 @@ function [alpha, beta, Gamma] = calculate_backward_statistics2(sbar, t, model)
     Qs = model.Qn(s, t(N));
     alpha(N-1) = (sp - g)'/Qs*(sp - g);
     beta(:, N-1) = G'/Qs*(sp - g);
-%     Gamma(:, :, N-1) = G'/Qs*G;
+if 0
     Gamma(:, :, N-1) = (G'/Qs*G)\eye(Nz);
+else
+    Gamma(:, :, N-1) = G'/Qs*G;
+end
     
     % Backward recursion
     for i = N-2:-1:1
@@ -451,17 +454,17 @@ function [alpha, beta, Gamma] = bf_update2(alpha, beta, Gamma, sp, s, t, model)
     Htilde = H - L*G;
     Qztilde = Qz - L*Qs*L';
 
-if 1
+if 0
     % (sp-g)'/Qs*(sp-g)
     LQs = chol(Qs).';
     epsilon1 = sum((LQs\(sp-g)).^2, 1);
     
     % (htilde - 2*Gamma*beta)'/(Gamma+Qztilde)*htilde
-    epsilon2 = sum((Gamma+Qztilde)\(htilde - 2*Gamma*beta*ones(1, M)).*htilde, 1);
+    epsilon2 = sum(((Gamma+Qztilde)\(htilde - 2*Gamma*beta*ones(1, M))).*htilde, 1);
     
     alpha = ( ...
         alpha + epsilon1 + epsilon2 ...
-        + beta'*Gamma/(Gamma+Qztilde)*Qztilde*beta ...
+        - beta'*Gamma/(Gamma+Qztilde)*Qztilde*beta ...
     );
 
     beta = Htilde'/(Gamma+Qztilde)*(Gamma*beta*ones(1, M) - htilde) + G'/Qs*(sp-g);
@@ -503,20 +506,19 @@ function lv = calculate_ancestor_weights2(alpha, beta, Gamma, sp, s, mz, Pz, t, 
     else
         [alpha, beta, Gamma] = bf_update2(alpha, beta, Gamma, sp, s, t, model);
         
-if 1
-        % TODO: Some calculations are done twice here, we can simplify
-        % these
-        % beta'*Gamma/(Gamma + Pz)*Pz*beta
-        epsilon1 = sum(((Gamma + Pz)\Gamma*beta).*(Pz*beta), 1);
+if 0
+        % NOTE: These branches produce the same result, verified.
+        % beta'*Gamma/(Gamma + Pz)*(Pz*beta + 2*mz)
+        epsilon1 = sum(((Gamma + Pz)\Gamma*beta).*(Pz*beta + 2*mz), 1);
         
         % 2*beta'*Gamma/(Gamma + Pz)*mz
-        epsilon2 = 2*sum(((Gamma + Pz)\Gamma*beta).*mz, 1);
+%         epsilon2 = 2*sum(((Gamma + Pz)\Gamma*beta).*mz, 1);
         
         % mz'/(Gamma + Pz)*mz
         LGammaPz = chol(Gamma + Pz).';
         epsilon3 = sum((LGammaPz\mz).^2, 1);
         
-        lv = lw - 1/2*(alpha - epsilon1 - epsilon2 + epsilon3);
+        lv = lw - 1/2*(alpha - epsilon1 + epsilon3);
         
 else
         Nz = size(beta, 1);
