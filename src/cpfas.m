@@ -1,4 +1,4 @@
-function [x, sys] = cpfas(y, t, model, xt, q, M, par)
+function [x, sys] = cpfas(y, t, model, xt, M, par)
 % Conditional Particle Filter with Ancestor Sampling
 %
 % USAGE
@@ -35,36 +35,25 @@ function [x, sys] = cpfas(y, t, model, xt, q, M, par)
 %   * Documentation
 %   * Implement rejection sampling-based ancestor index sampling
 
-    %% Parameter check & defaults
-    % Check that we get the correct no. of parameters and a well-defined
-    % model so that we can detect model problems already here.
-    narginchk(3, 7);
+    %% Defaults
+    narginchk(3, 6);
 %    modelchk(model);
-    
-    if nargin < 5 || isempty(q)
-        % Default proposal: Bootstrap
-        q = struct();
-        q.fast = model.px.fast;
-        q.logpdf = @(xp, y, x, t) model.px.logpdf(xp, x, t);
-        q.pdf = @(xp, y, x, t) model.px.pdf(xp, x, t);
-        q.rand = @(y, x, t) model.px.rand(x, t);
-        q.bootstrap = 1;
-    end
-    
-    if nargin < 6 || isempty(M)
+        
+    if nargin < 5 || isempty(M)
         % Default no. of particles
         M = 100;
     end
-    
-    if nargin < 7
-        % Default parameters
-        par = [];
+
+    % Default parameters (importance density, weights, etc.)
+    if nargin < 6
+        par = struct();
     end
-    % No parameters as of yet; may as well change
-%     def = struct(...
-%         'xt', [] ...      % Default trajectory
-%     );
-%     par = parchk(par, def);
+    def = struct( ...
+        'sample', @sample_bootstrap, ...
+        'calculate_incremental_weights', @calculate_incremental_weights_bootstrap, ...
+        'sample_ancestor_index', @sample_ancestor_index ...
+    );
+    par = parchk(par, def);
 
     % Prepend t[0] to t and y
     [Ny, N] = size(y);
@@ -73,16 +62,16 @@ function [x, sys] = cpfas(y, t, model, xt, q, M, par)
     y = [NaN*ones(Ny, 1), y];
 
     %% Initialize seed trajectory
+    % TODO: This is still hacky, needs some more attention
     % If no trajectory is given (e.g. for the first iteration), we draw an
     % initial trajectory from a bootstrap particle filter which should help
     % speed up convergence.
     if nargin < 4 || isempty(xt) || all(all(xt == 0))
         % Default trajectory: Use a regular PF to calculate a degenerate 
         % trajectory (see below)
-        % TODO: I need to see how to properly handle the augmentation of
-        % the y and t vectors. Right now, gibbs_pmcmc adds a zero in t, but
-        % nothing in y. This seems broken, but removing it at this point
-        % looks like it will break parameter sampling.
+        % TODO: bootstrap_pf can't cope with extra y and t yet, hence we
+        % remove them again.
+        % TODO: Should move to apf() once we have implemented that properly
         [~, sys] = bootstrap_pf(y(:, 2:end), t(2:end), model, M);
         beta = sysresample(sys(end).wf);
         j = beta(randi(M, 1));
@@ -112,26 +101,21 @@ function [x, sys] = cpfas(y, t, model, xt, q, M, par)
     
     %% Iterate over the data
     for n = 2:N
-        %% Sample particles
-        alpha = sysresample(w);
-        xp = sample_q(y(:, n), x(:, alpha), t(n), q);   % Draw M-1 particles
+        %% Sampling
+        % Resample, then sample M-1 particles and set the Mth to the seed 
+        % trajectory
+        alpha = sysresample(w);                         % TODO: Should we be able to change this through par?
+        xp = par.sample(y(:, n), x(:, alpha), t(n), model);
         xp(:, M) = xt(:, n);                            % Set Mth particle
         
-        %% Sample ancestor index
-        % TODO: Make generic (i.e., make so that we take the ancestor
-        % sampling function as a parameter)
-        if 1
-            % Conventional ancestor sampling
-            alpha(M) = sample_ancestor_index(xt(:, n), x, t(n), lw, model);
-        else
-            % Ancestor sampling based on rejection sampling
-            [alpha(M), rs(n)] = sample_ancestor_index_rs(xt(:, n), x, t(n), lw, model);
-        end
+        % Ancestor index (note: the ancestor weights have to be calculated
+        % *inside* the sampling function).
+        % TODO: State is used for diagnostics. Not sure if we're going to
+        % use it or not, but most likely we'll attach it to sys()
+        [alpha(M), state] = par.sample_ancestor_index(xt(:, n), x, t(n), lw, model);
         
         %% Calculate weights
-        % Incremental weights
-        % TODO: This needs to be taken from the par-structure
-        lw = calculate_incremental_weights_generic(y(:, n), xp, x(:, alpha), t(n), model, q);
+        lw = par.calculate_incremental_weights(y(:, n), xp, x(:, alpha), t(n), model);
         w = exp(lw-max(lw));
         w = w/sum(w);
         lw = log(w);
@@ -159,78 +143,5 @@ function [x, sys] = cpfas(y, t, model, xt, q, M, par)
         
     if 0
     fprintf('Acceptance rate is %.2f\n', sum(rs)/N);
-    end
-end
-
-%% Draw ancestor index for seed trajectory
-function alpha = sample_ancestor_index(xt, x, t, lw, model)
-    M = size(x, 2);
-    lv = calculate_ancestor_weights(xt, x, t, lw, model.px);
-    v = exp(lv-max(lv));
-    v = v/sum(v);
-    tmp = sysresample(v);
-    alpha = tmp(randi(M, 1));
-end
-
-%% 
-% TODO:
-%   * This is very ad-hoc right now
-% 	* We should also implement an adaptive version which uses the
-%     newly drawn weight in the proposal
-%   * We might as well sample from the prior; in fact, we alread resampled
-%     (outside of the function), thus we could sample from the prior by
-%     sampling random integers, which would be as efficient.
-function [alpha, accepted] = sample_ancestor_index_rs(xt, x, t, lw, model)
-    M = size(x, 2);
-    J = 10;
-    j = 0;
-    done = 0;
-    lv = lw + log(model.px.rho);
-    %lv = calculate_ancestor_weights(xt, x, t, lw, model.px);
-    iv = zeros(1, M);
-    while ~done
-        % Propose sample
-        alpha = randi(M, 1);
-        
-        % Calculate non-normalized weight
-%        lv(alpha) = lw(alpha) + model.px.logpdf(xt, x(:, alpha), t);
-        lv(alpha) = calculate_ancestor_weights(xt, x(:, alpha), t, lw(alpha), model.px);
-        iv(alpha) = 1;
-        
-        % Calculate upper bound on normalizing constant
-        %rho = sum(exp(lv));
-        rho = exp(max(lv));
-        kappa = 1; % M / M
-        
-        u = rand(1);
-        paccept = (exp(lv(alpha))/(kappa*rho));
-        if paccept > 1
-            warning('Acceptance probability larger than one, check your bounding constant.');
-        end
-        accepted = (u < paccept);
-        
-        j = j+1;
-        done = accepted || (j >= J);
-    end
-    if ~accepted
-        % Exhaustive search for the non-calculated ones
-        lv(~iv) = calculate_ancestor_weights(xt, x(:, ~iv), t, lw(~iv), model.px);
-        v = exp(lv-max(lv));
-        v = v/sum(v);
-        tmp = sysresample(v);
-        alpha = tmp(randi(M, 1));
-    end
-end
-
-%% Calculate ancestor weigths
-function lv = calculate_ancestor_weights(xt, x, t, lw, px)
-    M = size(x, 2);
-    if px.fast
-        lv = lw + px.logpdf(xt*ones(1, M), x, t);
-    else
-        lv = zeros(1, M);
-        for m = 1:M
-            lv(m) = lw(m) + px.logpdf(xt, x(:, m), t);
-        end
     end
 end
