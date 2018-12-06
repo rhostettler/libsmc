@@ -1,26 +1,27 @@
-function [xhat, sys] = sisr_pf(y, t, model, M, par)
-% Sequential importance sampling w/ resampling particle filter
+function [xhat, sys] = pf(y, t, model, M, par)
+% Particle filter
 %
-% SYNOPSIS
-%   xhat = SISR_PF(y, t, model, q)
-%   [xhat, sys] = SISR_PF(y, t, model, q, M, par)
+% USAGE
+%   xhat = PF(y, t, model)
+%   [xhat, sys] = PF(y, t, model, M, par)
 %
 % DESCRIPTION
-%   SISR_PF is a generic sequential importanc sampling with resampling
-%   particle filter, that is, pretty much the most generic SIR-type filter.
+%   PF is a generic sequential importance sampling with resampling
+%   particle filter.
 %
-%   Note that in this implementation, resampling is done before sampling
-%   new states from the importance distribution, much like in the auxiliary
-%   particle filter (but is different from the auxiliary particle filter in
-%   that it generally doesn't make use of adjustment multipliers, even
-%   though that can be implemented too by using an appropriate
-%   'resampling()' function).
+%   By default, a bootstrap particle filter with the following
+%   configuration is used:
+%
+%       - XXXX
+%
+%   However, essentially every aspect can be changed through additional
+%   parameters. These are specified as 
+%
 %
 % PARAMETERS
 %   y       Ny times N matrix of measurements.
 %   t       1 times N vector of timestamps.
 %   model   State space model structure.
-%   q       Importance distribution structure.
 %   M       Number of particles (optional, default: 100).
 %   par     Structure of additional (optional) parameters:
 %
@@ -44,15 +45,12 @@ function [xhat, sys] = sisr_pf(y, t, model, M, par)
 %               r   Boolean resampling indicator.
 %
 % AUTHORS
-%   2017-11-02 -- Roland Hostettler <roland.hostettler@aalto.fi>
+%   2018-12-06 -- Roland Hostettler <roland.hostettler@aalto.fi>
 
 % TODO:
 %   * Add possibility of adding output function (see gibbs_pmcmc())
 %   * Add a field to the parameters that can be used to calculate custom
 %     'integrals'
-%   * Rename to APF
-%   * Replace sample_q with par.sample
-%   * Default sampling functions to sample_bootstrap, etc.
 
     %% Defaults
     narginchk(3, 5);
@@ -96,11 +94,8 @@ function [xhat, sys] = sisr_pf(y, t, model, M, par)
     
     %% Process Data
     for n = 2:N
-        %% Resample
+        %% Sample
         [alpha, lw, r] = par.resample(lw);
-
-        %% Draw Samples
-        %xp = sample_q(y(:, n), x(:, alpha), t(n), q);
         xp = par.sample(y(:, n), x(:, alpha), t(n), model);
         
         %% Weights
