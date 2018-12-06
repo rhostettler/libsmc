@@ -1,4 +1,4 @@
-function [xhat, sys] = sisr_pf(y, t, model, q, M, par)
+function [xhat, sys] = sisr_pf(y, t, model, M, par)
 % Sequential importance sampling w/ resampling particle filter
 %
 % SYNOPSIS
@@ -50,18 +50,22 @@ function [xhat, sys] = sisr_pf(y, t, model, q, M, par)
 %   * Add possibility of adding output function (see gibbs_pmcmc())
 %   * Add a field to the parameters that can be used to calculate custom
 %     'integrals'
+%   * Rename to APF
+%   * Replace sample_q with par.sample
+%   * Default sampling functions to sample_bootstrap, etc.
 
     %% Defaults
-    narginchk(4, 6);
-    if nargin < 5 || isempty(M)
+    narginchk(3, 5);
+    if nargin < 4 || isempty(M)
         M = 100;
     end
-    if nargin < 6
-        par = [];
+    if nargin < 5
+        par = struct();
     end
     def = struct(...
+        'sample', @sample_bootstrap, ...
         'resample', @resample_ess, ...
-        'calculate_incremental_weights', @calculate_incremental_weights_generic ...
+        'calculate_incremental_weights', @calculate_incremental_weights_bootstrap ...
     );
     par = parchk(par, def);
     modelchk(model);
@@ -85,6 +89,8 @@ function [xhat, sys] = sisr_pf(y, t, model, q, M, par)
         sys(1).alpha = 1:M;
         sys(1).r = false;
         return_sys = true;
+    else
+        return_sys = false;
     end
     xhat = zeros(Nx, N-1);
     
@@ -94,10 +100,11 @@ function [xhat, sys] = sisr_pf(y, t, model, q, M, par)
         [alpha, lw, r] = par.resample(lw);
 
         %% Draw Samples
-        xp = sample_q(y(:, n), x(:, alpha), t(n), q);
+        %xp = sample_q(y(:, n), x(:, alpha), t(n), q);
+        xp = par.sample(y(:, n), x(:, alpha), t(n), model);
         
         %% Weights
-        lv = par.calculate_incremental_weights(y(:, n), xp, x, t(n), model, q);
+        lv = par.calculate_incremental_weights(y(:, n), xp, x, t(n), model);
         lw = lw+lv;
         lw = lw-max(lw);
         w = exp(lw);

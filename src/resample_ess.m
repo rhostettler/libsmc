@@ -34,7 +34,7 @@ function [alpha, lw, r] = resample_ess(lw, par)
     %% Defaults
     narginchk(1, 2);
     if nargin < 2
-        par = [];
+        par = struct();
     end
     M = length(lw);
     def = struct( ...

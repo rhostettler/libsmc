@@ -50,7 +50,7 @@ function [xhat, sys] = bootstrap_pf(y, t, model, M, par)
         % maintenance.
         par = struct();
     end
-    modelchk(model);
+%     modelchk(model);
     
     %% Filtering
     % The Bootstrap PF is a spcial case of the more general SISR PF where

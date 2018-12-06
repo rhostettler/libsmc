@@ -115,43 +115,49 @@ function [xhat, sys] = rbpf_mixed(y, t, model, M, par)
         %% Propagate
         for m = 1:M            
             % Get vectors/matrices for compactness
-            fn = model.fn(s(:, m), t(n));
-            An = model.Fn(s(:, m), t(n));
+            f = model.f(s(:, m), t(n));
+            F = model.F(s(:, m), t(n));
+            Q = model.Q(s(:, m), t(n));
+            
+            fn = f(in);
+            Fn = F(in, :);
             Gn = eye(Nn);
-            Qn = model.Qn(s(:, m), t(n));
+            Qn = Q(in, in);
 
-            fl = model.fl(s(:, m), t(n));
-            Al = model.Fl(s(:, m), t(n));
+            fl = f(il);
+            Fl = F(il, :);
             Gl = eye(Nl);
-            Ql = model.Ql(s(:, m), t(n));
-            Qnl = model.Qnl(s(:, m), t(n));
+            Ql = Q(il, il);
+            
+            Qnl = Q(in, il);
 
             %% Time update
             % Draw samples
             sp = par.sample(y(:, n), s(:, m), mz(:, m), Pz(:, :, m), t(n), model);
 
             % KF prediction
-            Albar = Al - Gl*Qnl'/(Gn*Qn)*An;
+            Flbar = Fl - Gl*Qnl'/(Gn*Qn)*Fn;
             Qlbar = Ql - Qnl'/Qn*Qnl;
             
-            Nt = An*Pz(:, :, m)*An' + Gn*Qn*Gn';
-            Lt = Albar*Pz(:, :, m)*An'/Nt;
+            Nt = Fn*Pz(:, :, m)*Fn' + Gn*Qn*Gn';
+            Lt = Flbar*Pz(:, :, m)*Fn'/Nt;
             mzp(:, m) = ( ...
-                Albar*mz(:, m) + Gl*Qnl'/(Gn*Qn)*(sp(:, m) - fn) ...
-                + fl + Lt*(sp(:, m) - fn - An*mz(:, m)) ...
+                Flbar*mz(:, m) + Gl*Qnl'/(Gn*Qn)*(sp(:, m) - fn) ...
+                + fl + Lt*(sp(:, m) - fn - Fn*mz(:, m)) ...
             );
             Pzp(:, :, m) = ( ...
-                Albar*Pz(:, :, m)*Albar' + Gl*Qlbar*Gl' - Lt*Nt*Lt' ...
+                Flbar*Pz(:, :, m)*Flbar' + Gl*Qlbar*Gl' - Lt*Nt*Lt' ...
             );
 
             %% Measurement update
             % KF update
-            Cn = model.C(sp(:, m), t(n));
-            Rn = model.R(sp(:, m), t(n));
-            hn = model.h(sp(:, m), t(n));
-            Mn = Cn*Pzp(:, :, m)*Cn' + Rn;
-            Kn = Pzp(:, :, m)*Cn'/Mn;
-            mz(:, m) = mzp(:, m) + Kn*(y - hn - Cn*mzp(:, m));
+            h = model.h(sp(:, m), t(n));
+            H = model.H(sp(:, m), t(n));
+            R = model.R(sp(:, m), t(n));
+
+            Mn = H*Pzp(:, :, m)*H' + R;
+            Kn = Pzp(:, :, m)*H'/Mn;
+            mz(:, m) = mzp(:, m) + Kn*(y - h - H*mzp(:, m));
             Pz(:, :, m) = Pzp(:, :, m) - Kn*Mn*Kn';
 
             % Weights
@@ -196,24 +202,29 @@ end
 %% Bootstrap sampling function
 % Overwrites global bootstrap sampling function
 function sp = sample_bootstrap(~, s, mz, Pz, t, model)
-    fn = model.fn(s, t);
-    An = model.Fn(s, t);
+    in = model.in;
+    f = model.f(s, t);
+    F = model.F(s, t);
+    Q = model.Q(s, t);
+    
+    fn = f(in);
+    Fn = F(in, :);
     Gn = Is;
-    Qn = model.Qn(s, t);
+    Qn = Q(in, in);
 
-    mu = fn + An*mz;
-    Sigma = An*Pz*An' + Gn*Qn*Gn';
+    mu = fn + Fn*mz;
+    Sigma = Fn*Pz*Fn' + Gn*Qn*Gn';
     sp = mu + chol(Sigma).'*randn(size(s, 1), 1);
 end
 
 %% Bootstrap weighing function
 % Overwrites global bootstrap weighing function
 function lv = calculate_incremental_weights_bootstrap(y, sp, mzp, Pzp, t, model)
-    Cn = model.C(sp, t);
-    Rn = model.R(sp, t);
-    hn = model.h(sp, t);
+    h = model.h(sp, t);
+    H = model.C(sp, t);
+    R = model.R(sp, t);
 
-    mu = hn + Cn*mzp;
-    Sigma = Cn*Pzp*Cn' + Rn;
+    mu = h + H*mzp;
+    Sigma = H*Pzp*H' + R;
     lv = logmvnpdf(y.', mu.', Sigma);
 end

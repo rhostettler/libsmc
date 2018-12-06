@@ -1,7 +1,7 @@
 function [xhat, sys] = ffbsi_ps(y, t, model, Mf, Ms, par, sys)
 % Forward filtering backward simulation particle smoother
 % 
-% SYNOPSIS
+% USAGE
 %   xhat, = FFBSI_PS(y, t, model)
 %   [xhat, sys] = FFBSI_PS(y, t, model, Mf, Ms, par, sys)
 %

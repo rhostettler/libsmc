@@ -33,6 +33,9 @@ function [xhat, sys] = wiener_2bfs(y, t, model, M, par)
 % TODO
 %   * Smoothing of initial state is missing (needs special attention in the
 %     smoothed weight section).
+%   * There seems to be a bug in the backward filter initialization; too
+%     large error there; it seems that this might be related to the
+%     ancestor indices, need to check that.
    
     %% Defaults & Checks
     narginchk(3, 5);

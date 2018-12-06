@@ -1,7 +1,7 @@
 function lv = calculate_incremental_weights_generic(y, xp, x, t, model, q)
 % General incremental weights for sequential importance sampling
 %
-% SYNOPSIS
+% USAGE
 %   lv = CALCULATE_INCREMENTAL_WEIGHTS_GENERIC(y, xp, x, t, model, q)
 %
 % DESCRIPTION
@@ -16,11 +16,14 @@ function lv = calculate_incremental_weights_generic(y, xp, x, t, model, q)
 %   xp      New state x[n].
 %   x       Previous state x[n-1].
 %   t       Timestamp.
-%   model   Model struct.
+%   model   State-space model struct.
 %   q       Proposal density struct.
 %
 % RETURNS
 %   lv      Logarithm ov incremental weights.
+%
+% SEE ALSO
+%   sample_generic
 %
 % AUTHORS
 %   2017-04-07 -- Roland Hostettler <roland.hostettler@aalto.fi>

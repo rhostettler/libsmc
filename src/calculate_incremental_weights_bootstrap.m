@@ -1,4 +1,4 @@
-function lv = calculate_incremental_weights_bootstrap(y, xp, x, t, model, q)
+function lv = calculate_incremental_weights_bootstrap(y, xp, x, t, model)
 % Incremental particle weights for the bootstrap particle filter
 %
 % SYNOPSIS
@@ -19,7 +19,6 @@ function lv = calculate_incremental_weights_bootstrap(y, xp, x, t, model, q)
 %   x       Particles at time t[n-1] (i.e. x[n-1]).
 %   t       Time t[n] or time difference t[n]-t[n-1].
 %   model   Model structure.
-%   q       Proposal density used.
 %
 % RETURNS
 %   lv      The non-normalized log-weights.
@@ -27,7 +26,7 @@ function lv = calculate_incremental_weights_bootstrap(y, xp, x, t, model, q)
 % AUTHOR
 %   2017-04-07 -- Roland Hostettler <roland.hostettler@aalto.fi>
 
-    narginchk(6, 6);
+    narginchk(5, 5);
     M = size(xp, 2);
     py = model.py;
     if py.fast
