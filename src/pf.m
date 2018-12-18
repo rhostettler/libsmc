@@ -51,6 +51,8 @@ function [xhat, sys] = pf(y, t, model, M, par)
 %   * Add possibility of adding output function (see gibbs_pmcmc())
 %   * Add a field to the parameters that can be used to calculate custom
 %     'integrals'
+%   * update documentation
+%   * rename to sir_pf or similar?
 
     %% Defaults
     narginchk(3, 5);
@@ -61,9 +63,8 @@ function [xhat, sys] = pf(y, t, model, M, par)
         par = struct();
     end
     def = struct(...
-        'sample', @sample_bootstrap, ...
         'resample', @resample_ess, ...
-        'calculate_incremental_weights', @calculate_incremental_weights_bootstrap ...
+        'update', @sis_update_bootstrap ...
     );
     par = parchk(par, def);
     modelchk(model);
@@ -94,18 +95,19 @@ function [xhat, sys] = pf(y, t, model, M, par)
     
     %% Process Data
     for n = 2:N
-        %% Sample
+        %% Update
+        % Resample
         [alpha, lw, r] = par.resample(lw);
-        xp = par.sample(y(:, n), x(:, alpha), t(n), model);
         
-        %% Weights
-        lv = par.calculate_incremental_weights(y(:, n), xp, x, t(n), model);
+        % Sample new particles
+        [x, lv] = par.update(y(:, n), x(:, alpha), t(n), model);
+        
+        % Calculate and normalize weights
         lw = lw+lv;
         lw = lw-max(lw);
         w = exp(lw);
         w = w/sum(w);
         lw = log(w);
-        x = xp;
         
         %% Point Estimate(s)
         % Note: We don't have a state estimate for the initial state (in
