@@ -45,14 +45,14 @@ function [xhat, sys] = pf(y, t, model, M, par)
 %               r   Boolean resampling indicator.
 %
 % AUTHORS
-%   2018-12-06 -- Roland Hostettler <roland.hostettler@aalto.fi>
+%   2018 -- Roland Hostettler <roland.hostettler@aalto.fi>
 
 % TODO:
 %   * Add possibility of adding output function (see gibbs_pmcmc())
 %   * Add a field to the parameters that can be used to calculate custom
 %     'integrals'
 %   * update documentation
-%   * rename to sir_pf or similar?
+%   * rename to sir_pf or similar again?
 
     %% Defaults
     narginchk(3, 5);
