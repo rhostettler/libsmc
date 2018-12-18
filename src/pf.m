@@ -53,6 +53,8 @@ function [xhat, sys] = pf(y, t, model, M, par)
 %     'integrals'
 %   * update documentation
 %   * rename to sir_pf or similar again?
+%   * 't' is not 'time' anymore but a generic parameter; need proper
+%     handling for that.
 
     %% Defaults
     narginchk(3, 5);

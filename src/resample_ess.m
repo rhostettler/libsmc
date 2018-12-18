@@ -1,7 +1,7 @@
 function [alpha, lw, r] = resample_ess(lw, par)
 % Effective sample size-based conditional resampling
 %
-% SYNOPSIS
+% USAGE
 %   [alpha, lw, r] = RESAMPLE_ESS(lw, par)
 %
 % DESCRIPTION
