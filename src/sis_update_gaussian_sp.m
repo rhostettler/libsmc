@@ -79,7 +79,7 @@ function [xp, lv] = sis_update_gaussian_sp(y, x, theta, model, f, Q, g, R, L, Xi
         % Default: Cubature sigma-points
         Xi = ut_sigmas(zeros(Nx, 1), eye(Nx), Nx);
     end
-    if nargin < 11 || isemtpy(wm)
+    if nargin < 11 || isempty(wm)
         % TODO: Remove ut_weights
         % Default: Cubature sigma-points
         [wm, wc] = ut_weights(Nx, 1, 0, 0);
@@ -105,7 +105,9 @@ function [xp, lv] = sis_update_gaussian_sp(y, x, theta, model, f, Q, g, R, L, Xi
         Pp = Px;
 
         % Iterations
-        for l = 1:L
+        l = 0;
+        done = false;
+        while ~done
             % Generate sigma-points
             X = mp*ones(1, I) + chol(Pp).'*Xi;
 
@@ -136,12 +138,22 @@ function [xp, lv] = sis_update_gaussian_sp(y, x, theta, model, f, Q, g, R, L, Xi
             % Moments of y of the joint approximation
             my = Phi*mx + Gamma;
             Py = Phi*Px*Phi' + Sigma;
+            Py = (Py + Py')/2;
             Pxy = Px*Phi';
 
             % Posterior of x given y
-            K = Pxy/Py;
-            mp = mx + K*(y - my);
-            Pp = Px - K*Py*K';
+            if Py == 0
+                done = true;
+%                 warning('Posterior approximation not possible. Sampling from prior.');
+            else
+                K = Pxy/Py;
+                mp = mx + K*(y - my);
+                Pp = Px - K*Py*K';
+                Pp = (Pp + Pp')/2;
+            end
+            
+            l = l + 1;            
+            done = (l >= L) || done;
         end
         
         %% Sample and calculate incremental weight
