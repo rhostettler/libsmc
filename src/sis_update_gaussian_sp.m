@@ -77,6 +77,7 @@ function [xp, lv] = sis_update_gaussian_sp(y, x, theta, model, f, Q, g, R, L, Xi
     if nargin < 10 || isempty(Xi)
         % TODO: Remove ut_sigmas
         % Default: Cubature sigma-points
+        % BUG: Last argument should not be Nx!!!!!!
         Xi = ut_sigmas(zeros(Nx, 1), eye(Nx), Nx);
     end
     if nargin < 11 || isempty(wm)

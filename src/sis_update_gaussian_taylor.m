@@ -68,30 +68,53 @@ function [xp, lv] = sis_update_gaussian_taylor(y, x, theta, model, f, Q, g, Gx, 
     narginchk(9, 10);
     if nargin < 10 || isempty(L)
         L = 1;
-    elseif L > 1
-        error('Iterated variants not implemented yet.');
     end
     [Nx, J] = size(x);
     xp = zeros(Nx, J);
-    lv = zeros(1, J);
+    lv = zeros(1, J);    
     
+    % For all particles...
     for j = 1:J
         %% Calculate proposal
-        %for l = 1:L
-            fj = f(x(:, j), theta);
-            Gxj = Gx(x(:, j), theta);
-            S = Gxj*Q*Gxj' + R;
-            K = Q*Gxj'/S;
-            mp = fj + K*(y - g(fj));
-            Pp = Q - K*S*K';
-        %end
+        % Initialize
+        mx = f(x(:, j), theta);     % E{x[n] | x[n-1]}
+        Px = Q(x(:, j), theta);     % Cov{x[n] | x[n-1]}
+        mxp = mx;                    % Initial linearization density
+        Pxp = Px;
+        
+        % IEKF-like approximation
+        for l = 1:L
+            % Expectations w.r.t. linearization density
+            myp = g(mxp, theta);
+            Gxj = Gx(mxp, theta);
+            Pyp = Gxj*Pxp*Gxj' + R(mxp, theta);
+            Pyxp = Gxj*Pxp;
+                        
+            % Calculate linearization w.r.t. linearization density
+            % y = A*x + b + v, v ~ N(0, Omega)
+            A = Pyxp/Pxp;
+            b = myp - A*mxp;
+            Omega = Pyp - A*Pxp*A';
+
+            % Moments of y of the joint approximation
+            my = A*mx + b;
+            Py = A*Px*A' + Omega;
+            Py = (Py + Py')/2;
+            Pxy = Px*A';
+            
+            % Measurement update
+            K = Pxy/Py;
+            mxp = mx + K*(y - my);
+            Pxp = Px - K*Py*K';
+            Pxp = (Pxp + Pxp')/2;
+        end
        
         %% Sample and calculate weight
-        xp(:, j) = mp + chol(Pp).'*randn(Nx, 1);
+        xp(:, j) = mxp + chol(Pxp).'*randn(Nx, 1);
         lv(j) = ( ...
             model.py.logpdf(y, xp(:, j), theta) ...
             + model.px.logpdf(xp(:, j), x(:, j), theta) ...
-            - logmvnpdf(xp(:, j).', mp.', Pp.').' ...
+            - logmvnpdf(xp(:, j).', mxp.', Pxp.').' ...
         );
     end
 end

@@ -9,8 +9,8 @@ rng(5011);
 
 %% Parameters
 % Filter parameters
-J = 1000;         % Number of particles
-L = 5;          % Number of iterations
+J = 500;         % Number of particles
+L = 1;          % Number of iterations
 
 % Sigma-points: Assigns weight 1/2 to the central point, same weights for
 % mean and covariance
@@ -28,7 +28,7 @@ m0 = log(7);
 P0 = 0.1;
 
 % Save the simulation?
-store = true;
+store = false;
 
 %% Model
 f = @(x, n) log(44.7) + x - exp(x);
@@ -54,8 +54,9 @@ model = struct('px0', px0, 'px', px, 'py', py);
 %% Algorithm parameters
 % SLR using unscented transform
 Nx = size(m0, 1);
-Xi = ut_sigmas(zeros(Nx, 1), eye(Nx), Nx);
-[wm, wc] = ut_weights(Nx, alpha, beta, kappa);
+[wm, wc, c] = ut_weights(Nx, alpha, beta, kappa);
+Xi = ut_sigmas(zeros(Nx, 1), eye(Nx), c);
+
 
 par_sp = struct( ...
     'update', @(y, x, theta, model) sis_update_gaussian_sp(y, x, theta, model, f, @(x, theta) Q, g, R, L, Xi, wm, wc) ...
@@ -65,7 +66,9 @@ par_sp = struct( ...
 % Preallocate
 xs = zeros(1, N, K);
 xhat_bpf = zeros(1, N, K);
+r_bpf = zeros(1, N+1, K);
 xhat_sp = xhat_bpf;
+r_sp = zeros(1, N+1, K);
 t_bpf = zeros(1, K);
 t_sp = t_bpf;
 
@@ -85,13 +88,15 @@ for k = 1:K
     %% Estimation
     % Bootstrap PF
     tic;
-    xhat_bpf(:, :, k) = pf(y, 1:N, model, J);
+    [xhat_bpf(:, :, k), sys_bpf] = pf(y, 1:N, model, J);
     t_bpf(k) = toc;
+    r_bpf(:, :, k) = cat(2, sys_bpf.r);
 
     % SLR using sigma-points, L iterations
     tic;
-    xhat_sp(:, :, k) = pf(y, 1:N, model, J, par_sp);
+    [xhat_sp(:, :, k), sys_sp] = pf(y, 1:N, model, J, par_sp);
     t_sp(k) = toc;
+    r_sp(:, :, k) = cat(2, sys_sp.r);
     
     %% Progress
     pbar(k, fh);
@@ -102,28 +107,23 @@ pbar(0, fh);
 iNaN_bpf = squeeze(isnan(xhat_bpf(:, N, :)));
 iNaN_sp = squeeze(isnan(xhat_sp(:, N, :)));
 
-fprintf('\tRMSE\t\tTime\t\tDivergence\n');
+fprintf('\tRMSE\t\tTime\t\tResampling\tConvergence\n');
 fprintf( ...
-    'BPF\t%.2f (%.2f)\t%.2f (%.2f)\t%d\n', ...
+    'BPF\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\n', ...
     mean(rms(xs(:, :, ~iNaN_bpf) - xhat_bpf(:, :, ~iNaN_bpf)), 3), ...
     std(rms(xs(:, :, ~iNaN_bpf) - xhat_bpf(:, :, ~iNaN_bpf)), [], 3), ...
-    mean(t_bpf), std(t_bpf), sum(iNaN_bpf) ...
+    mean(t_bpf), std(t_bpf), ...
+    mean(sum(r_bpf(:, :, ~iNaN_bpf))/N), std(sum(r_bpf(:, :, ~iNaN_bpf))/N), ...
+    1-sum(iNaN_bpf)/K ...
 );
 fprintf( ...
-    'ICE\t%.2f (%.2f)\t%.2f (%.2f)\t%d\n', ...
+    'ICE\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\n', ...
     mean(rms(xs(:, :, ~iNaN_sp) - xhat_sp(:, :, ~iNaN_sp)), 3), ...
     std(rms(xs(:, :, ~iNaN_sp) - xhat_sp(:, :, ~iNaN_sp)), [], 3), ...
-    mean(t_sp), std(t_sp), sum(iNaN_sp) ...
+    mean(t_sp), std(t_sp), ...
+    mean(sum(r_sp(:, :, ~iNaN_sp))/N), std(sum(r_sp(:, :, ~iNaN_sp))/N), ...
+    1-sum(iNaN_sp)/K ...
 );
-
-%% Plots
-if 0
-figure(1); clf();
-plot(xs); hold on;
-plot(xhat_bpf);
-plot(xhat_sp);
-legend('State', 'Bootstrap', 'Sigma-Points');
-end
 
 %% Store results
 if store
