@@ -89,7 +89,7 @@ function [xp, lv] = sis_update_gaussian_cf(y, x, theta, model, f, Q, Ey, Cy, Cyx
         done = false;
         while ~done
             % Calculate linearization w.r.t. linearization density
-            % y = Phi*x + Gamma + nu, nu ~ N(0, Sigma)
+            % y = A*x + b + nu, nu ~ N(0, Omega)
             A = Cyx(mp, Pp, theta)/Pp;
             b = Ey(mp, Pp, theta) - A*mp;
             Omega = Cy(mp, Pp, theta) - A*Pp*A';
@@ -111,6 +111,7 @@ function [xp, lv] = sis_update_gaussian_cf(y, x, theta, model, f, Q, Ey, Cy, Cyx
             [Lt, nd] = chol(Pt, 'lower');
             if nd
                 done = true;
+                warning('libsmc:warning', 'Posterior approximation failed, sampling from prior.');
             else
                 done = false;
                 mp = mt;

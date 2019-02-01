@@ -61,7 +61,7 @@ function [xp, lv] = sis_update_gaussian_sp(y, x, theta, model, f, Q, g, R, L, Xi
 %           where q(x[n]) is the proposal.
 %
 % AUTHOR
-%   2018 -- Roland Hostettler <roland.hostettler@aalto.fi>
+%   2018-2019 -- Roland Hostettler <roland.hostettler@aalto.fi>
 
 % TODO:
 %   * When Xi is specified, at least wm should be too (and vice-versa)
@@ -104,13 +104,14 @@ function [xp, lv] = sis_update_gaussian_sp(y, x, theta, model, f, Q, g, R, L, Xi
         Px = Q(x(:, j), theta);
         mp = mx;
         Pp = Px;
+        Lp = chol(Pp, 'lower');
 
         % Iterations
         l = 0;
         done = false;
         while ~done
             % Generate sigma-points
-            X = mp*ones(1, I) + chol(Pp).'*Xi;
+            X = mp*ones(1, I) + Lp*Xi;
 
             % Calculate expectations w.r.t. linearziation density
             Ey = zeros(Ny, 1);              % E{y}
@@ -131,26 +132,34 @@ function [xp, lv] = sis_update_gaussian_sp(y, x, theta, model, f, Q, g, R, L, Xi
             Cyx = Eyx - (Ey*mp');           % C{y,x}
 
             % Calculate linearization w.r.t. linearization density
-            % y = Phi*x + Gamma + nu, nu ~ N(0, Sigma)
-            Phi = Cyx/Pp;
-            Gamma = Ey - Phi*mp;
-            Sigma = Vy - Phi*Pp*Phi';
+            % y = A*x + b + nu, nu ~ N(0, Omega)
+            A = Cyx/Pp;
+            b = Ey - A*mp;
+            Omega = Vy - A*Pp*A';
 
             % Moments of y of the joint approximation
-            my = Phi*mx + Gamma;
-            Py = Phi*Px*Phi' + Sigma;
+            my = A*mx + b;
+            Py = A*Px*A' + Omega;
             Py = (Py + Py')/2;
-            Pxy = Px*Phi';
+            Pxy = Px*A';
 
             % Posterior of x given y
-            if Py == 0
+            K = Pxy/Py;
+            mt = mx + K*(y - my);
+            Pt = Px - K*Py*K';
+            Pt = (Pt + Pt')/2;
+            
+            % Check if posterior update was successful, if not, exit loop
+            % and use the previous best approximation
+            [Lt, nd] = chol(Pt, 'lower');
+            if nd
                 done = true;
-%                 warning('Posterior approximation not possible. Sampling from prior.');
+                warning('libsmc:warning', 'Posterior approximation failed, sampling from prior.');
             else
-                K = Pxy/Py;
-                mp = mx + K*(y - my);
-                Pp = Px - K*Py*K';
-                Pp = (Pp + Pp')/2;
+                done = false;
+                mp = mt;
+                Pp = Pt;
+                Lp = Lt;
             end
             
             l = l + 1;            
@@ -159,7 +168,7 @@ function [xp, lv] = sis_update_gaussian_sp(y, x, theta, model, f, Q, g, R, L, Xi
         
         %% Sample and calculate incremental weight
         % Sample
-        xp(:, j) = mp + chol(Pp).'*randn(Nx, 1);
+        xp(:, j) = mp + Lp*randn(Nx, 1);
         
         % Incremental importance weight
         py = model.py;

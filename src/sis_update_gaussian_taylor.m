@@ -35,6 +35,9 @@ function [xp, lv] = sis_update_gaussian_taylor(y, x, theta, model, f, Q, g, Gx, 
 %   defined by a functional mean (e.g., Poisson likelihoods). In this case,
 %   the conditional moments E{y[n] | x[n]} and Cov{y[n] | x[n]} are used.
 %
+%   This implementation uses Taylor-series-based linearization of the
+%   nonlinear model (as the (I)EKF).
+%
 % PARAMETERS
 %   y       Measurement y[n]
 %   x       State x[n-1]
@@ -45,26 +48,20 @@ function [xp, lv] = sis_update_gaussian_taylor(y, x, theta, model, f, Q, g, Gx, 
 %           handle @(x, theta))
 %   g       Mean of the likelihood E{y[n] | x[n]} (function handle @(x, 
 %           theta))
-%   Gx      Jacobian of the mean of the lieklihood (function handle @(x,
+%   Gx      Jacobian of the mean of the likelihood (function handle @(x,
 %           theta)
 %   R       Covariance of the likelihood Cov{y[n] | x[n]} (function handle
 %           @(x, theta))
 %   L       Number of iterations (optional, default: 1)
-%   Xi      Unit sigma-points (optional, default: cubature rule)
-%   wm      Mean sigma-point weights (optional, default: cubature rule)
-%   wc      Covariance sigma-point weights (optional, default: cubature
-%           rule)
 %
 % RETURNS
 %   xp      New samples for x[n].
 %   lv      Logarithm of the incremental weights.
 %
 % AUTHOR
-%   2018 -- Roland Hostettler <roland.hostettler@aalto.fi>
+%   2018-2019 -- Roland Hostettler <roland.hostettler@aalto.fi>
 
-% TODO:
-%   * Implement iterated variants
-
+    %% Defaults
     narginchk(9, 10);
     if nargin < 10 || isempty(L)
         L = 1;
@@ -73,6 +70,7 @@ function [xp, lv] = sis_update_gaussian_taylor(y, x, theta, model, f, Q, g, Gx, 
     xp = zeros(Nx, J);
     lv = zeros(1, J);    
     
+    %% Update
     % For all particles...
     for j = 1:J
         %% Calculate proposal
@@ -83,7 +81,9 @@ function [xp, lv] = sis_update_gaussian_taylor(y, x, theta, model, f, Q, g, Gx, 
         Pxp = Px;
         
         % IEKF-like approximation
-        for l = 1:L
+        l = 0;
+        done = false;
+        while ~done
             % Expectations w.r.t. linearization density
             myp = g(mxp, theta);
             Gxj = Gx(mxp, theta);
@@ -103,10 +103,18 @@ function [xp, lv] = sis_update_gaussian_taylor(y, x, theta, model, f, Q, g, Gx, 
             Pxy = Px*A';
             
             % Measurement update
-            K = Pxy/Py;
-            mxp = mx + K*(y - my);
-            Pxp = Px - K*Py*K';
-            Pxp = (Pxp + Pxp')/2;
+            if Py == 0
+                done = true;
+                warning('libsmc:warning', 'Posterior approximation failed, sampling from prior.');
+            else
+                K = Pxy/Py;
+                mxp = mx + K*(y - my);
+                Pxp = Px - K*Py*K';
+                Pxp = (Pxp + Pxp')/2;
+            end
+            
+            l = l + 1;            
+            done = (l >= L) || done;
         end
        
         %% Sample and calculate weight

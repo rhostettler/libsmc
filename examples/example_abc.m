@@ -13,7 +13,7 @@
 % dynamics, however, the measurement model is unimodal (the bimodality in
 % the original model is difficult to evaluate).
 %
-% 2019-01-28 -- Roland Hostettler <roland.hostettler@aalto.fi>
+% 2019 -- Roland Hostettler <roland.hostettler@aalto.fi>
 
 % Housekeeping
 clear variables;
@@ -22,8 +22,8 @@ rng(5011);
 
 %% Parameters
 % Filter parameters
-J = 1000;       % Number of particles
-L = 3;         % Number of iterations
+J = 500;       % Number of particles
+L = 5;         % Number of iterations
 
 % Sigma-points: Assigns weight 1/2 to the central point, same weights for
 % mean and covariance
