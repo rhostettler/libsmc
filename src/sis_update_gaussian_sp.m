@@ -65,7 +65,8 @@ function [xp, lv] = sis_update_gaussian_sp(y, x, theta, model, f, Q, g, R, L, Xi
 
 % TODO:
 %   * When Xi is specified, at least wm should be too (and vice-versa)
-%   * Remove dependency on ut_sigmas, ut_weights
+%   * Defaults for sigma-points are missing
+%   * Add 'gamma' as a parameter
 
     %% Defaults
     narginchk(8, 12);
@@ -75,19 +76,18 @@ function [xp, lv] = sis_update_gaussian_sp(y, x, theta, model, f, Q, g, R, L, Xi
         L = 1;
     end
     if nargin < 10 || isempty(Xi)
-        % TODO: Remove ut_sigmas
-        % Default: Cubature sigma-points
-        % BUG: Last argument should not be Nx!!!!!!
-        Xi = ut_sigmas(zeros(Nx, 1), eye(Nx), Nx);
+        error('Please specify the sigma-points.');
     end
     if nargin < 11 || isempty(wm)
-        % TODO: Remove ut_weights
-        % Default: Cubature sigma-points
-        [wm, wc] = ut_weights(Nx, 1, 0, 0);
+        error('Please specify the sigma-point weights.');
     end
     if nargin < 12 || isempty(wc)
+        warning('libsmc:warning', 'Using the same weights for mean and covariance');
         wc = wm;
     end
+    
+%     gamma = chi2inv(0.99, Ny);
+    gamma = chi2inv(1, Ny);
 
     %% Sample and calculate incremental weights
     % Preallocate
@@ -152,9 +152,9 @@ function [xp, lv] = sis_update_gaussian_sp(y, x, theta, model, f, Q, g, R, L, Xi
             % Check if posterior update was successful, if not, exit loop
             % and use the previous best approximation
             [Lt, nd] = chol(Pt, 'lower');
-            if nd
+            if nd || ((y - my)'/Py*(y - my) >= gamma)
                 done = true;
-                warning('libsmc:warning', 'Posterior approximation failed, sampling from prior.');
+                warning('libsmc:warning', 'Posterior approximation failed (l = %d), sampling from prior.', l);
             else
                 done = false;
                 mp = mt;
@@ -167,10 +167,7 @@ function [xp, lv] = sis_update_gaussian_sp(y, x, theta, model, f, Q, g, R, L, Xi
         end
         
         %% Sample and calculate incremental weight
-        % Sample
         xp(:, j) = mp + Lp*randn(Nx, 1);
-        
-        % Incremental importance weight
         py = model.py;
         px = model.px;
         lv(j) = ( ...

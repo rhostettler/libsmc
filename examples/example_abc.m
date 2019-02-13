@@ -19,11 +19,15 @@
 clear variables;
 addpath(genpath('../src'));
 rng(5011);
+spmd
+    warning('off', 'all');
+end
+warning('off', 'all');
 
 %% Parameters
 % Filter parameters
-J = 500;       % Number of particles
-L = 5;         % Number of iterations
+J = 100;       % Number of particles
+L = 1;         % Number of iterations
 
 % Sigma-points: Assigns weight 1/2 to the central point, same weights for
 % mean and covariance
@@ -37,23 +41,27 @@ K = 100;     % Number of MC simulations
 
 % Model parameters
 Q = 10;
-R = 1e-12;
+R = 1e-6;
 m0 = 0;
 P0 = 5;
 
 % Save the simulation results (true/false)
-store = true;
+store = false;
 
 %% Model
 % Dynamic and measurement function
 f = @(x, n) 0.5*x + 25*x./(1+x.^2) + 8*cos(1.2*n);
-g = @(x, theta) tanh(x/20);
-Gx = @(x, theta) 1/20*(1-tanh(x/20).^2);
+% g = @(x, theta) x.^2/20;
+% Gx = @(x, theta) 2*x/20;
+
+g = @(x, theta) x.^2/20 + x;
+Gx = @(x, theta) 2*x/20 + 1;
+
+% g = @(x, theta) tanh(x/2);
+% Gx = @(x, theta) 1/10*(1-tanh(x/10).^2);
 
 % libsmc model structure
 model = model_nonlinear_gaussian(f, Q, g, R, m0, P0);
-model.px.fast = false;
-model.py.fast = false;
 
 %% Sampling algorithms
 % Approximation of the optimal proposal using linearization
@@ -72,6 +80,7 @@ par_sp = struct( ...
 %% MC Simulations
 % Preallocate
 xs = zeros(1, N, K);
+ys = zeros(1, N, K);
 xhat_bpf = zeros(1, N, K);
 xhat_lin = xhat_bpf;
 xhat_sp = xhat_bpf;
@@ -83,8 +92,9 @@ t_lin = t_bpf;
 t_sp = t_bpf;
 
 % Simulate
+fprintf('Simulating with J = %d, L = %d, N = %d, K = %d...\n', J, L, N, K);
 fh = pbar(K);
-for k = 1:K
+parfor k = 1:K
     %% Model simulation
     y = zeros(1, N);
     x = m0 + sqrt(P0)*randn(1);
@@ -95,25 +105,32 @@ for k = 1:K
         
         xs(:, n, k) = x;
     end
+    ys(:, :, k) = y;
 
     %% Estimation
     % Bootstrap PF
-    tic;
-    [xhat_bpf(:, :, k), sys_bpf] = pf(y, 1:N, model, J);
-    t_bpf(k) = toc;
-    r_bpf(:, :, k) = cat(2, sys_bpf.r);
+    if L == 1
+        tic;
+        [xhat_bpf(:, :, k)] = pf(y, 1:N, model, J);
+        t_bpf(k) = toc;
+%         r_bpf(:, :, k) = cat(2, sys_bpf.r);
+    end
     
+if 1
     % Taylor series approximation of SLR
     tic;
-    [xhat_lin(:, :, k), sys_lin] = pf(y, 1:N, model, J, par_lin);
+    [xhat_lin(:, :, k)] = pf(y, 1:N, model, J, par_lin);
     t_lin(k) = toc;
-    r_lin(:, :, k) = cat(2, sys_lin.r);
+%     r_lin(:, :, k) = cat(2, sys_lin.r);
+end
 
     % Sigma-point approximation of SLR
+if 1
     tic;
-    [xhat_sp(:, :, k), sys_sp] = pf(y, 1:N, model, J, par_sp);
+    [xhat_sp(:, :, k)] = pf(y, 1:N, model, J, par_sp);
     t_sp(k) = toc;
-    r_sp(:, :, k) = cat(2, sys_sp.r);
+%     r_sp(:, :, k) = cat(2, sys_sp.r);
+end
     
     %% Progress
     pbar(k, fh);
@@ -153,25 +170,25 @@ fprintf( ...
 
 %% Plots
 if K == 1
-figure(1); clf();
-plot(xs); hold on;
-plot(xhat_bpf);
-plot(xhat_lin);
-plot(xhat_sp);
-legend('State', 'Bootstrap', 'Linearized', 'Sigma-Points');
-title('MMSE');
+    figure(1); clf();
+    plot(xs); hold on;
+    plot(xhat_bpf);
+    plot(xhat_lin);
+    plot(xhat_sp);
+    legend('State', 'Bootstrap', 'Linearized', 'Sigma-Points');
+    title('MMSE');
 
-figure(2); clf();
-plot(xs - xhat_bpf); hold on;
-plot(xs - xhat_lin);
-plot(xs - xhat_sp);
-legend('Bootstrap', 'Linearized', 'Sigma-Points');
-title('Error');
+    figure(2); clf();
+    plot(xs - xhat_bpf); hold on;
+    plot(xs - xhat_lin);
+    plot(xs - xhat_sp);
+    legend('Bootstrap', 'Linearized', 'Sigma-Points');
+    title('Error');
 
-figure(3); clf();
-plot(xs); hold on;
-plot(y);
-title('Data');
+    figure(3); clf();
+%     plot(xs); hold on;
+    plot(ys);
+    title('Data');
 end
 
 %% Store results

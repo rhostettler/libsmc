@@ -69,6 +69,7 @@ function [xp, lv] = sis_update_gaussian_taylor(y, x, theta, model, f, Q, g, Gx, 
     [Nx, J] = size(x);
     xp = zeros(Nx, J);
     lv = zeros(1, J);    
+    gamma = chi2inv(0.99, size(y, 1));
     
     %% Update
     % For all particles...
@@ -101,23 +102,30 @@ function [xp, lv] = sis_update_gaussian_taylor(y, x, theta, model, f, Q, g, Gx, 
             Py = A*Px*A' + Omega;
             Py = (Py + Py')/2;
             Pxy = Px*A';
+                        
+            % Posterior of x given y
+            K = Pxy/Py;
+            mt = mx + K*(y - my);
+            Pt = Px - K*Py*K';
+            Pt = (Pt + Pt')/2;
             
-            % Measurement update
-            if Py == 0
+            % Check if posterior update was successful, if not, exit loop
+            % and use the previous best approximation
+            [~, nd] = chol(Pt, 'lower');
+            if nd || ((y - my)'/Py*(y - my) >= gamma)
                 done = true;
-                warning('libsmc:warning', 'Posterior approximation failed, sampling from prior.');
+                warning('libsmc:warning', 'Posterior approximation failed (l = %d; posterior covariance negative definite), sampling from prior.', l);
             else
-                K = Pxy/Py;
-                mxp = mx + K*(y - my);
-                Pxp = Px - K*Py*K';
-                Pxp = (Pxp + Pxp')/2;
+                done = false;
+                mxp = mt;
+                Pxp = Pt;
             end
-            
+
             l = l + 1;            
             done = (l >= L) || done;
         end
        
-        %% Sample and calculate weight
+        %% Sample and calculate weight        
         xp(:, j) = mxp + chol(Pxp).'*randn(Nx, 1);
         lv(j) = ( ...
             model.py.logpdf(y, xp(:, j), theta) ...
