@@ -89,6 +89,7 @@ function [xhat, sys] = pf(y, t, model, M, par)
         sys(1).w = exp(lw);
         sys(1).alpha = 1:M;
         sys(1).r = false;
+        sys(1).q = [];
         return_sys = true;
     else
         return_sys = false;
@@ -102,7 +103,7 @@ function [xhat, sys] = pf(y, t, model, M, par)
         [alpha, lw, r] = par.resample(lw);
         
         % Sample new particles
-        [x, lv] = par.update(y(:, n), x(:, alpha), t(n), model);
+        [x, lv, q] = par.update(y(:, n), x(:, alpha), t(n), model);
         
         % Calculate and normalize weights
         lw = lw+lv;
@@ -123,6 +124,7 @@ function [xhat, sys] = pf(y, t, model, M, par)
             sys(n).w = w;
             sys(n).alpha = alpha;
             sys(n).r = r;
+            sys(n).q = q;
         end
     end
     
