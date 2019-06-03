@@ -1,4 +1,4 @@
-function [xp, lv] = sis_update_bootstrap(y, x, theta, model)
+function [xp, lv, q] = sis_update_bootstrap(y, x, theta, model)
 % Sequential Imporance Sampling: Bootstrap Update
 %
 % USAGE
@@ -36,6 +36,7 @@ function [xp, lv] = sis_update_bootstrap(y, x, theta, model)
 
     narginchk(4, 4);
     [Nx, J] = size(x);
+    q = [];
 
     %% Sample
     px = model.px;

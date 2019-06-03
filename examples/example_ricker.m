@@ -19,10 +19,11 @@ rng(5011);
 spmd
     warning('off', 'all');
 end
+warning('off', 'all');
 
 %% Parameters
 % Filter parameters
-J = 1000;         % Number of particles
+J = 100;         % Number of particles
 L = 5;          % Number of iterations
 
 % Sigma-points: Assigns weight 1/2 to the central point, same weights for
@@ -33,7 +34,7 @@ kappa = 0;
 
 % Simulation parameters
 N = 1000;       % Number of time samples
-K = 100;        % Number of MC simulations
+K = 1;        % Number of MC simulations
 
 % Model parameters
 Q = 0.3^2;
@@ -105,7 +106,8 @@ t_cf = zeros(1, K);
 
 fprintf('Simulating with J = %d, L = %d, N = %d, K = %d...\n', J, L, N, K);
 fh = pbar(K);
-parfor k = 1:K
+% parfor k = 1:K
+for k = 1:K
     %% Simulation
     y = zeros(1, N);
     x = m0 + sqrt(P0)*randn(1);
@@ -148,6 +150,31 @@ parfor k = 1:K
     pbar(k, fh);
 end
 pbar(0, fh);
+
+
+%%
+mps = zeros(L+1, N);
+Pps = zeros(L+1, N);
+
+for j = 1:J
+    for n = 2:N+1
+        mps(:, n) = sys_cf(n).q(j).mp.';
+        Pps(:, n) = squeeze(sys_cf(n).q(j).Pp);
+    end
+if 0
+    figure(1); clf();
+    plot(mps(1:4, :).');
+    legend('l = 0', 'l = 1', 'l = 2', 'l = 3', 'l = 4', 'l = 5');
+    title('Mean');
+end
+
+    figure(2); clf();
+    plot(Pps(1:4, :).');
+    legend('l = 0', 'l = 1', 'l = 2', 'l = 3', 'l = 4', 'l = 5');
+    title('Variance');
+    drawnow();
+    pause(1);
+end
 
 %% Results
 iNaN_bpf = squeeze(isnan(xhat_bpf(:, N, :)));

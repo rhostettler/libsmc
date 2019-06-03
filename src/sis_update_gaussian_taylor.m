@@ -1,4 +1,4 @@
-function [xp, lv] = sis_update_gaussian_taylor(y, x, theta, model, f, Q, g, Gx, R, L)
+function [xp, lv, q] = sis_update_gaussian_taylor(y, x, theta, model, f, Q, g, Gx, R, L)
 % SIS Update w/ Gauss-Taylor Approximation of Optimal Importance Density
 %
 % USAGE
@@ -68,7 +68,12 @@ function [xp, lv] = sis_update_gaussian_taylor(y, x, theta, model, f, Q, g, Gx, 
     end
     [Nx, J] = size(x);
     xp = zeros(Nx, J);
-    lv = zeros(1, J);    
+    lv = zeros(1, J);
+    qout = (nargout >= 3);
+    if qout
+        q = repmat(struct('mp', zeros(Nx, L+1), 'Pp', zeros(Nx, Nx, L+1)), [1, J]);
+    end
+
     gamma = chi2inv(0.99, size(y, 1));
     
     %% Update
@@ -80,6 +85,11 @@ function [xp, lv] = sis_update_gaussian_taylor(y, x, theta, model, f, Q, g, Gx, 
         Px = Q(x(:, j), theta);     % Cov{x[n] | x[n-1]}
         mxp = mx;                    % Initial linearization density
         Pxp = Px;
+        
+        if qout
+            q(j).mp(:, 1) = mxp;
+            q(j).Pp(:, :, 1) = Pxp;
+        end
         
         % IEKF-like approximation
         l = 0;
@@ -121,6 +131,11 @@ function [xp, lv] = sis_update_gaussian_taylor(y, x, theta, model, f, Q, g, Gx, 
                 Pxp = Pt;
             end
 
+            if qout
+                q(j).mp(:, l+2) = mxp;
+                q(j).Pp(:, :, l+2) = Pxp;
+            end
+            
             l = l + 1;            
             done = (l >= L) || done;
         end

@@ -1,4 +1,4 @@
-function [xp, lv] = sis_update_gaussian_cf(y, x, theta, model, f, Q, Ey, Cy, Cyx, L)
+function [xp, lv, q] = sis_update_gaussian_cf(y, x, theta, model, f, Q, Ey, Cy, Cyx, L)
 % Gaussian Approximation to Optimal Importance Distribution (Closed-Form)
 %
 % USAGE
@@ -73,6 +73,10 @@ function [xp, lv] = sis_update_gaussian_cf(y, x, theta, model, f, Q, Ey, Cy, Cyx
     % Preallocate
     xp = zeros(Nx, J);
     lv = zeros(1, J);
+    qout = (nargout >= 3);
+    if qout
+        q = repmat(struct('mp', zeros(Nx, L+1), 'Pp', zeros(Nx, Nx, L+1)), [1, J]);
+    end
     
     % For all particles...
     for j = 1:J
@@ -84,6 +88,12 @@ function [xp, lv] = sis_update_gaussian_cf(y, x, theta, model, f, Q, Ey, Cy, Cyx
         Pp = Px;
         Lp = chol(Pp, 'lower');
 
+        if qout
+            q(j).mp(:, 1) = mp;
+            q(j).Pp(:, :, 1) = Pp;
+        end
+
+        
         % Iterations
         l = 0;
         done = false;
@@ -117,6 +127,11 @@ function [xp, lv] = sis_update_gaussian_cf(y, x, theta, model, f, Q, Ey, Cy, Cyx
                 mp = mt;
                 Pp = Pt;
                 Lp = Lt;
+            end
+            
+            if qout
+                q(j).mp(:, l+2) = mp;
+                q(j).Pp(:, :, l+2) = Pp;
             end
             
             l = l + 1;            

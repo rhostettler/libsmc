@@ -1,4 +1,4 @@
-function [xp, lv] = sis_update_gaussian_sp(y, x, theta, model, f, Q, g, R, L, Xi, wm, wc)
+function [xp, lv, q] = sis_update_gaussian_sp(y, x, theta, model, f, Q, g, R, L, Xi, wm, wc)
 % Gaussian Approximation to Optimal Importance Distribution w/ Sigma-Points
 %
 % USAGE
@@ -95,6 +95,10 @@ function [xp, lv] = sis_update_gaussian_sp(y, x, theta, model, f, Q, g, R, L, Xi
     lv = zeros(1, J);
     I = length(wm);
     Y = zeros(Ny, I);
+    qout = (nargout >= 3);
+    if qout
+        q = repmat(struct('mp', zeros(Nx, L+1), 'Pp', zeros(Nx, Nx, L+1)), [1, J]);
+    end
     
     % For all particles...
     for j = 1:J
@@ -105,6 +109,11 @@ function [xp, lv] = sis_update_gaussian_sp(y, x, theta, model, f, Q, g, R, L, Xi
         mp = mx;
         Pp = Px;
         Lp = chol(Pp, 'lower');
+        
+        if qout
+            q(j).mp(:, 1) = mp;
+            q(j).Pp(:, :, 1) = Pp;
+        end
 
         % Iterations
         l = 0;
@@ -162,7 +171,12 @@ function [xp, lv] = sis_update_gaussian_sp(y, x, theta, model, f, Q, g, R, L, Xi
                 Lp = Lt;
             end
             
-            l = l + 1;            
+            if qout
+                q(j).mp(:, l+2) = mp;
+                q(j).Pp(:, :, l+2) = Pp;
+            end
+            
+            l = l + 1;
             done = (l >= L) || done;
         end
         
