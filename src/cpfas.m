@@ -1,52 +1,59 @@
-function [x, sys] = cpfas(model, y, xt, theta, J, par)
+function [x, sys] = cpfas(model, y, xtilde, theta, J, par)
 % Conditional particle filter with ancestor sampling
 %
 % USAGE
-%   x = CPFAS(y, t, model)
-%   [x, sys] = CPFAS(y, t, model, xt, q, M, par)
+%   x = CPFAS(model, y)
+%   [x, sys] = CPFAS(model, y, xtilde, theta, J, par)
 % 
 % DESCRIPTION
 %   
 %
 % PARAMETERS
-%   y       Measurement data (Ny*N)
-%   t       Time vector (1*N)
 %   model   Model structure
-%   xt      
-%   q       Proposal density (optional, default: bootstrap proposal)
-%   M       No. of particles (optional, default: 100)
-%   par     Additional parameters
+%   y       Measurements, y[1:N]
+%   xtilde  Seed trajectory, xtilde[1:N] (optional, a bootstrap particle
+%           filter is used to generate a seed trajectory if omitted)
+%   theta   Additional parameters (optional)
+%   J       Number of particles (optional, default: 100)
+%   par     Additional algorithm parameters:
+%
+%           sample(model, y, x, theta)
+%               Function to sample new particles (used for the J-1
+%               particles; optional, default: sample_bootstrap)
+%
+%           calculate_incremental_weights(model, y, xp, x, theta)
+%               Function to calculate the incremental particle weights
+%               (must match the sampling function defined above; optional,
+%               default: calculate_incremental_weights_bootstrap)
+%
+%           sample_ancestor_index(model, y, xtilde, x, lw, theta)
+%               Function to sample the ancestor indices (optional, default:
+%               sample_ancestor_index)
+%
 %
 % RETURNS
-%   x       A newly sampled trajectory (Nx*N)
-%   sys     Particle system containing the following fields:
+%   x       The newly sampled trajectory (Nx*N)
+%   sys     Struct of the particle system containing:
 %
-%               xf  The filtered particles (i.e. particles of the marginal
-%                   filtering distribution at time t[n])
-%               wf  The weights corresponding to the particles in xf
-%               x   (Degenerate) state trajectories
-%
-%
+%           x       Raw particles (not ordered according to their lineages)
+%           w       Raw particle weights corresponding to x
+%           alpha   Ancestor indices for all particles
+%           r       Resampling indicator (always true for CPF-AS)
+%           state   Internal state of the ancestor index sampling
+%                   algorithm, see the corresponding algorithm for details
 %
 % AUTHOR
 %   2017-2019 -- Roland Hostettler <roland.hostettler@aalto.fi>
 
 % TODO
-%   * Update documentation
-%   * t is not t anymore; replace
-%   * Merge non-Markovian stuff here; shouldn't be too difficult?
-%   * sample_XXX functions should be re-implemented and changed in pf()
+%   * Check if the non-Markovian case can be merged in here as well
 
     %% Defaults
     narginchk(2, 6);
-%    modelchk(model);
-
     if nargin < 4
         theta = [];
     end
-
     if nargin < 5 || isempty(J)
-        % Default no. of particles
         J = 100;
     end
 
@@ -61,7 +68,7 @@ function [x, sys] = cpfas(model, y, xt, theta, J, par)
     );
     par = parchk(par, def);
 
-        %% Prepare and preallocate
+    %% Prepare and preallocate
     % Prepend a NaN measurement (for x[0] where we don't have a 
     % measurement)
     [Ny, N] = size(y);
@@ -91,22 +98,22 @@ function [x, sys] = cpfas(model, y, xt, theta, J, par)
     % If no trajectory is given (e.g. for the first iteration), we draw an
     % initial trajectory from a bootstrap particle filter which helps to
     % speed up convergence.
-    if nargin < 3 || isempty(xt) || all(all(xt == 0))
+    if nargin < 3 || isempty(xtilde) || all(all(xtilde == 0))
         % Default trajectory: Use a regular PF to calculate a degenerate 
         % trajectory (see below)
-        [~, sys] = pf(y(:, 2:N), theta(:, 2:N), model, J);
+        [~, tmp] = pf(y(:, 2:N), theta(:, 2:N), model, J);
         
         % Sample trajectory according to the final filter weights
-        beta = sysresample(sys(end).wf);
+        beta = sysresample(tmp(end).wf);
         j = beta(randi(J, 1));
-        xf = cat(3, sys.xf);
-        xt = squeeze(xf(:, j, :));
+        xf = cat(3, tmp.xf);
+        xtilde = squeeze(xf(:, j, :));
     end
         
     %% Initialize
     % Draw initial particles
     x = model.px0.rand(J-1);
-    x(:, J) = xt(:, 1);
+    x(:, J) = xtilde(:, 1);
     w = 1/J*ones(1, J);
     lw = log(1/J)*ones(1, J);
     
@@ -121,13 +128,11 @@ function [x, sys] = cpfas(model, y, xt, theta, J, par)
         % trajectory
         alpha = sysresample(w);                         % TODO: Should we be able to change this through par?
         xp = par.sample(model, y(:, n), x(:, alpha), theta(:, n));
-        xp(:, J) = xt(:, n);                            % Set Jth particle
+        xp(:, J) = xtilde(:, n);                            % Set Jth particle
         
         % Ancestor index (note: the ancestor weights have to be calculated
         % *inside* the sampling function).
-        % TODO: State is used for diagnostics. Not sure if we're going to
-        % use it or not, but most likely we'll attach it to sys()
-        [alpha(J), state] = par.sample_ancestor_index(model, y(:, n), xt(:, n), x, lw, theta(:, n));
+        [alpha(J), state] = par.sample_ancestor_index(model, y(:, n), xtilde(:, n), x, lw, theta(:, n));
         
         %% Calculate weights
         lw = par.calculate_incremental_weights(model, y(:, n), xp, x(:, alpha), theta(:, n));
@@ -139,23 +144,20 @@ function [x, sys] = cpfas(model, y, xt, theta, J, par)
             warning('NaN and/or Inf in particle weights.');
         end
         
-        % Set particles
+        % Update particles
         x = xp;
 
         %% Store
-        % TODO: Here we will also store the rejection sampling indicator,
-        % once that is properly migrated
         sys(n).x = x;
         sys(n).w = w;
+        sys(n).r = true;
         sys(n).alpha = alpha;
         sys(n).state = state;
     end
     
-    sum(cat(1, sys(:).state)) %%%% TODO: Move this away
-    
     %% Sample trajectory
     beta = sysresample(w);
     j = beta(randi(J, 1));
-    sys = calculate_particle_lineages(sys, j);
-    x = cat(2, sys.xf);
+    tmp = calculate_particle_lineages(sys, j);
+    x = cat(2, tmp.xf);
 end
