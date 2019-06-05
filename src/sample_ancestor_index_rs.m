@@ -1,4 +1,4 @@
-function [alpha, accepted] = sample_ancestor_index_rs(xt, x, t, lw, model)
+function [alpha, accepted] = sample_ancestor_index_rs(model, y, xt, x, lw, theta)
 % Rejection-sampling-based ancesotr sampling for particle Gibbs
 %
 % USAGE
@@ -44,7 +44,7 @@ function [alpha, accepted] = sample_ancestor_index_rs(xt, x, t, lw, model)
         % Calculate non-normalized weight, but only if we haven't done so
         % before
         if iv(alpha) == 0
-            lv(alpha) = calculate_ancestor_weights(xt, x(:, alpha), t, lw(alpha), model.px);
+            lv(alpha) = calculate_ancestor_weights(model, y, xt, x(:, alpha), lw(alpha), theta);
             iv(alpha) = 1;
         end
         
@@ -60,7 +60,7 @@ function [alpha, accepted] = sample_ancestor_index_rs(xt, x, t, lw, model)
     end
     if ~accepted
         % Exhaustive search for the non-calculated ones
-        lv(~iv) = calculate_ancestor_weights(xt, x(:, ~iv), t, lw(~iv), model.px);
+        lv(~iv) = calculate_ancestor_weights(model, y, xt, x(:, ~iv), lw(~iv), theta);
         v = exp(lv-max(lv));
         v = v/sum(v);
         tmp = sysresample(v);

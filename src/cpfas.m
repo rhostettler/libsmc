@@ -1,4 +1,4 @@
-function [x, sys] = cpfas(y, t, model, xt, J, par)
+function [x, sys] = cpfas(model, y, xt, theta, J, par)
 % Conditional particle filter with ancestor sampling
 %
 % USAGE
@@ -32,14 +32,19 @@ function [x, sys] = cpfas(y, t, model, xt, J, par)
 %   2017-2019 -- Roland Hostettler <roland.hostettler@aalto.fi>
 
 % TODO
-%   * Documentation
+%   * Update documentation
 %   * t is not t anymore; replace
 %   * Merge non-Markovian stuff here; shouldn't be too difficult?
+%   * sample_XXX functions should be re-implemented and changed in pf()
 
     %% Defaults
-    narginchk(3, 6);
+    narginchk(2, 6);
 %    modelchk(model);
-        
+
+    if nargin < 4
+        theta = [];
+    end
+
     if nargin < 5 || isempty(J)
         % Default no. of particles
         J = 100;
@@ -56,14 +61,40 @@ function [x, sys] = cpfas(y, t, model, xt, J, par)
     );
     par = parchk(par, def);
 
+        %% Prepare and preallocate
+    % Prepend a NaN measurement (for x[0] where we don't have a 
+    % measurement)
+    [Ny, N] = size(y);
+    N = N+1;
+    y = [NaN*ones(Ny, 1), y];
+
+    % Expand theta properly such that we have theta(:, n)
+    [~, Nc] = size(theta);
+    switch Nc
+        case 0
+            % Empty theta => create vector of NaNs
+            theta = NaN*ones(1, N);
+        case 1
+            % Single (static parameter), expand to be Nc*N
+            theta = theta*ones(1, N);
+        case N-1
+            theta = [NaN, theta];
+        otherwise
+            error('Parameter vector must either be empty, M x 1, or M x N');
+    end
+    
+    % Determine state size
+    Nx = size(model.px0.rand(1), 1);
+    sys = initialize_sys(N, Nx, J);
+    
     %% Initialize seed trajectory
     % If no trajectory is given (e.g. for the first iteration), we draw an
     % initial trajectory from a bootstrap particle filter which helps to
     % speed up convergence.
-    if nargin < 4 || isempty(xt) || all(all(xt == 0))
+    if nargin < 3 || isempty(xt) || all(all(xt == 0))
         % Default trajectory: Use a regular PF to calculate a degenerate 
         % trajectory (see below)
-        [~, sys] = pf(y, t, model, J);
+        [~, sys] = pf(y(:, 2:N), theta(:, 2:N), model, J);
         
         % Sample trajectory according to the final filter weights
         beta = sysresample(sys(end).wf);
@@ -71,17 +102,7 @@ function [x, sys] = cpfas(y, t, model, xt, J, par)
         xf = cat(3, sys.xf);
         xt = squeeze(xf(:, j, :));
     end
-    
-    %% Prepare and preallocate
-    % Prepend t[0] to t and y
-    [Ny, N] = size(y);
-    N = N+1;
-    t = [0, t];
-    y = [NaN*ones(Ny, 1), y];
-
-    Nx = size(model.px0.rand(1), 1);
-    sys = initialize_sys(N, Nx, J);
-    
+        
     %% Initialize
     % Draw initial particles
     x = model.px0.rand(J-1);
@@ -96,20 +117,20 @@ function [x, sys] = cpfas(y, t, model, xt, J, par)
     %% Iterate over the data
     for n = 2:N
         %% Sampling
-        % Resample, then sample M-1 particles and set the Mth to the seed 
+        % Resample, then sample J-1 particles and set the Jth to the seed 
         % trajectory
         alpha = sysresample(w);                         % TODO: Should we be able to change this through par?
-        xp = par.sample(y(:, n), x(:, alpha), t(n), model); % TODO: This is broken from here on down since we have removed the .sample / .calculate_incremental_weights stuff
-        xp(:, J) = xt(:, n);                            % Set Mth particle
+        xp = par.sample(model, y(:, n), x(:, alpha), theta(:, n));
+        xp(:, J) = xt(:, n);                            % Set Jth particle
         
         % Ancestor index (note: the ancestor weights have to be calculated
         % *inside* the sampling function).
         % TODO: State is used for diagnostics. Not sure if we're going to
         % use it or not, but most likely we'll attach it to sys()
-        [alpha(J), state] = par.sample_ancestor_index(xt(:, n), x, t(n), lw, model);
+        [alpha(J), state] = par.sample_ancestor_index(model, y(:, n), xt(:, n), x, lw, theta(:, n));
         
         %% Calculate weights
-        lw = par.calculate_incremental_weights(y(:, n), xp, x(:, alpha), t(n), model);
+        lw = par.calculate_incremental_weights(model, y(:, n), xp, x(:, alpha), theta(:, n));
         w = exp(lw-max(lw));
         w = w/sum(w);
         lw = log(w);
@@ -130,48 +151,11 @@ function [x, sys] = cpfas(y, t, model, xt, J, par)
         sys(n).state = state;
     end
     
-    sum(cat(1, sys(:).state))
+    sum(cat(1, sys(:).state)) %%%% TODO: Move this away
     
     %% Sample trajectory
     beta = sysresample(w);
     j = beta(randi(J, 1));
     sys = calculate_particle_lineages(sys, j);
     x = cat(2, sys.xf);
-        
-    if 0
-    fprintf('Acceptance rate is %.2f\n', sum(rs)/N);
-    end
-end
-
-%% 
-function [xp, lv, q] = sample_bootstrap(y, x, theta, model)
-    narginchk(4, 4);
-    [Nx, J] = size(x);
-    q = [];
-
-    %% Sample
-    px = model.px;
-    if px.fast
-        xp = px.rand(x, theta);
-    else
-        xp = zeros(Nx, J);
-        for j = 1:J
-            xp(:, j) = px.rand(x(:, j), theta);
-        end
-    end
-end
-
-%% Calculate incremental weights
-function lv = calculate_incremental_weights_bootstrap(y, xp, x, theta, model)
-    narginchk(5, 5);
-    [Nx, J] = size(x);
-    py = model.py;
-    if py.fast
-        lv = py.logpdf(y*ones(1, J), xp, theta);
-    else
-        lv = zeros(1, J);
-        for j = 1:J
-            lv(j) = py.logpdf(y, xp(:, j), theta);
-        end
-    end
 end

@@ -1,11 +1,18 @@
+function [alpha, state] = sample_ancestor_index(model, y, xt, x, lw, theta)
+% %% Draw ancestor index for seed trajectory
+%
+%
+% TODO:
+%   * Interface
+%   * Document
+%   * Comments
 
-%% Draw ancestor index for seed trajectory
-function [alpha, state] = sample_ancestor_index(xt, x, t, lw, model)
     state = NaN;
     M = size(x, 2);
-    lv = calculate_ancestor_weights(xt, x, t, lw, model.px);
+    lv = calculate_ancestor_weights(model, y, xt, x, lw, theta);
     v = exp(lv-max(lv));
     v = v/sum(v);
     tmp = sysresample(v);
     alpha = tmp(randi(M, 1));
 end
+

@@ -1,20 +1,19 @@
+% Example of particle Gibbs using conditional particle filter with 
+% rejection-sampling-based ancestor sampling
+%
 % 
 %
-% test_cpfas.m -- 2017-04-07
-% Roland Hostettler <roland.hostettler@aalto.fi>
+% 2017-2019 -- Roland Hostettler <roland.hostettler@aalto.fi>
 
 % Housekeeping
 clear variables;
-addpath lib;
+addpath(genpath('../src'));
+rng(511);
 
 %% Parameters
-% No. of time samples
-N = 100;
-
-% No. of particles
-M = 200;
-
-K = 1;
+N = 100;    % No. of time samples
+J = 500;    % No. of particles
+K = 100;    % No of MC samples
 
 %% Model
 m0 = zeros(2, 1);
@@ -26,20 +25,33 @@ F = [
 Q = 0.25*eye(2);
 G = [0.25, 0];
 R = 1;
-model = lgss_model(F, Q, G, R, m0, P0);
-model.px.fast = 0;
-%model.px.rho = model.px.pdf(zeros(2, 1), zeros(2, 1), 0);
+model = model_lgssm(F, Q, G, R, m0, P0);
 
-%% Proposal
-% Optimal proposal
+model.px.fast = 0; % if we don't use this, it's slower :(
+model.px.kappa = model.px.pdf(zeros(2, 1), zeros(2, 1), 0);  % TODO: This should be solved more elegantly
+model = @(theta) model;
+
+%%
+
+% Proposal (locally optimal proposal)
+% TODO: Needs to be added
+if 0
 S = G*Q*G' + R;
 L = Q*G'/S;
 mu = @(x, y) F*x + L*(y - G*F*x);
 Sigma = Q - L*S*L';
 q.fast = 1;
-q.rand = @(y, x, t) mu(x, y) + chol(Sigma).'*randn(size(Sigma, 1), size(x, 2));
-q.logpdf = @(xp, y, x, t) logmvnpdf(xp.', (mu(x, y)).', Sigma).';
-q.bootstrap = 0;   %%%%%% TODO: This should be set automatically if omitted
+q.rand = @(y, x, theta) mu(x, y) + chol(Sigma).'*randn(size(Sigma, 1), size(x, 2));
+q.logpdf = @(xp, y, x, theta) logmvnpdf(xp.', (mu(x, y)).', Sigma).';
+end
+
+% CPF parameters
+par_cpf = struct();
+par_cpf.sample_ancestor_index = @sample_ancestor_index_rs;
+
+% Particle Gibbs parameters
+par = struct();
+par.sample_states = @(y, t, xt, theta) cpfas(model(theta), y, xt, [], J, par_cpf);
 
 %% 
 xs = zeros(size(m0, 1), N);
@@ -56,53 +68,44 @@ for n = 1:N
 end
 
 %% Estimate
-t = 1:N;
-
 % KF
-tic;
+%tic;
 %xhat_kf = kf(y, F, G, Q, R, m0, P0);
-[m, P, mp, Pp] = kf(y, F, G, Q, R, m0, P0);
-xhat_kf = rtss(F, m, P, mp, Pp);
-t_kf = toc;
-
-% CPF-AS
-if 0
-tic;
-[~, ~, sys_cpfas] = cpfas(y, t, model, q, M);
-t_cpfas = toc;
-
-% CPF-AS
-tic;
-[~, sys_pgas] = pgas(y, t, model, q, M);
-t_cpfas = toc;
-end
+% [m, P, mp, Pp] = kf(y, F, G, Q, R, m0, P0);
+% xhat_kf = rtss(F, m, P, mp, Pp);
+%t_kf = toc;
 
 % CPF-AS smoother
-par = struct();
-par.filter = @(y, t, model, q, M, par) pgas(y, t, model, q, M, par);
-par.Kburnin = 0;
-par.Kmixing = 1;
 tic;
-[xhat_sm, sys_sm] = cpfas_ps(y, t, model, q, M, 10, par);
+[x_sm, sys_sm] = gibbs_pmcmc(y, [], model, [], K, par);
+x_sm = x_sm(:, 2:end, :);
+xhat_sm = mean(x_sm, 3);
 t_sm = toc;
 
 %% Illustrate
 figure(1); clf();
 set(gcf, 'name', 'Trajectories');
+figure(2); clf();
+set(gcf, 'name', 'Distribution at XXX');
 for i = 1:2
+    figure(1);
     subplot(2, 1, i);
-%    plot(t, squeeze(sys_cpfas.xf(i, :, :)), 'b'); hold on;
-    plot(t, squeeze(sys_sm.xs(i, :, :)), 'r');
-    plot(t, xs(i, :), 'k', 'LineWidth', 2);
-    title('CPF Trajectories (blue), Smoother Trajectories (red), True Trajectory (black)');
+    plot(squeeze(x_sm(i, :, :)), 'Color', [0.9, 0.9, 0.9]); hold on;
+    plot(xhat_sm(i, :), 'r', 'LineWidth', 2);
+    plot(xs(i, :), 'k', 'LineWidth', 2);
+    title('Posterior Mean (red), True Trajectory (black), Sampled Trajectories (grey)');
+    
+    figure(2);
+    subplot(1, 2, i);
+    hist(squeeze(x_sm(i, 41, :)), 20);
 end
 
 %% Stats
 trms = @(e) sqrt(mean(sum(e.^2, 1), 2));
-fprintf('\nResults for K = %d MC simulations, M = %d particles.\n\n', K, M);
+fprintf('\nResults for K = %d MC simulations, M = %d particles.\n\n', K, J);
 fprintf('\tRMSE\t\tTime\n');
 fprintf('\t----\t\t----\n');
-fprintf('KF\t%.4f (%.2f)\t%.3g (%.2f)\n', ...
-    mean(trms(xhat_kf-xs)), std(trms(xhat_kf-xs)), mean(t_kf), std(t_kf));
+% fprintf('KF\t%.4f (%.2f)\t%.3g (%.2f)\n', ...
+%     mean(trms(xhat_kf-xs)), std(trms(xhat_kf-xs)), mean(t_kf), std(t_kf));
 fprintf('CPF-AS\t%.4f (%.2f)\t%.3g (%.2f)\n', ...
     mean(trms(xhat_sm-xs)), std(trms(xhat_sm-xs)), mean(t_sm), std(t_sm));
