@@ -1,4 +1,4 @@
-function [xs, thetas] = gibbs_pmcmc(y, t, model, theta0, K, par)
+function [xs, thetas, sys] = gibbs_pmcmc(model, y, theta0, lambda, K, par)
 % Particle Gibbs Markov chain Monte Carlo sampler
 %
 % SYNOPSIS
@@ -79,24 +79,31 @@ function [xs, thetas] = gibbs_pmcmc(y, t, model, theta0, K, par)
 %   * There's still confusion about using both 'create_model' and theta in
 %     the different methods. That should be sorted out somehow by the model
 %     things
+%   * If there are no parameters to sample, thetas() can not be used as an
+%     input to sample_states.
+%   * Update docs
+%   * Update interface of sample_parameters
 
     %% Defaults
-    narginchk(3, 6);
-    if nargin < 4
+    narginchk(2, 6);
+    if nargin < 3
         theta0 = [];
+    end
+    if nargin < 4
+        lambda = [];
     end
     if nargin < 5 || isempty(K)
         K = 10;
     end
     if nargin < 6
-        par = [];
+        par = struct();
     end
     
     % Default parameters
     def = struct(...
         'Kburnin', 0, ...
         'Kmixing', 1, ...
-        'sample_states', @(y, t, x, ~, ~) cpfas(y, t, model, x), ...
+        'sample_states', @(y, xtilde, theta, lambda) cpfas(model(theta(:, end)), y, xtilde, lambda), ...
         'sample_parameters', [], ...
         'show_progress', [] ...
     );
@@ -110,25 +117,33 @@ function [xs, thetas] = gibbs_pmcmc(y, t, model, theta0, K, par)
     state = [];
     
     % Preallocate
+    x = [];
     xs = [];
+    if isempty(theta0)
+        theta0 = NaN;
+    end
     thetas = theta0*ones(1, Kmcmc+1);
 
     %% MCMC sampling
     for k = 2:Kmcmc+1
         % Sample trajectory
-        if ~isempty(par.sample_states)
-            x = par.sample_states(y, t, xs(:, :, k-1), thetas(:, 1:k-1), model(thetas(:, k-1)));
+        % TODO: More hacks here...
+        if ~isempty(par.sample_states)    
+            [x, tmp] = par.sample_states(y, x, thetas(:, 1:k-1), lambda);
             if k == 2
                 xs = zeros([size(x), Kmcmc+1]);
+                sys = cell(1, Kmcmc+1);
             end
             xs(:, :, k) = x;
+            sys{k} = tmp;
         else
             error('No state sampling method provided.');
         end
         
         % Sample parameters
+        % TODO: Update interaface on sample_parameters
         if ~isempty(par.sample_parameters)
-            [thetas(:, k), state] = par.sample_parameters(y, t, xs(:, :, k), thetas(:, 1:k-1), model, state);
+            [thetas(:, k), state] = par.sample_parameters(y, lambda, xs(:, :, k), thetas(:, 1:k-1), model, state);
         end
         
         % Show progress
@@ -142,5 +157,8 @@ function [xs, thetas] = gibbs_pmcmc(y, t, model, theta0, K, par)
     xs = xs(:, :, par.Kburnin+2:par.Kmixing:Kmcmc+1);
     if ~isempty(thetas)
         thetas = thetas(:, par.Kburnin+2:par.Kmixing:Kmcmc+1);
+    end
+    if nargout >= 3
+        sys = sys(par.Kburnin+2:par.Kmixing:Kmcmc+1);
     end
 end
