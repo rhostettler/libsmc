@@ -34,7 +34,7 @@ function lvtilde = calculate_ancestor_weights(model, y, xtilde, x, lw, theta)
     else
         lvtilde = zeros(1, J);
         for j = 1:J
-            lvtilde(j) = lw(j) + px.logpdf(xtilde, x(:, j), theta);
+            lvtilde(j) = lw(j) + px.logpdf(xtilde, x(:, j, :), theta);
         end
     end
 end

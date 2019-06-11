@@ -57,13 +57,16 @@ end
     LQ = chol(Q).';
     px = struct();
     px.fast = true;
-    px.rand = @(x, t) f(x, t) + LQ*randn(Nx, size(x, 2));
-    px.logpdf = @(xp, x, t) logmvnpdf(xp.', f(x, t).', Q.').';
+    px.rand = @(x, theta) f(x, theta) + LQ*randn(Nx, size(x, 2));
+    px.logpdf = @(xp, x, theta) logmvnpdf(xp.', f(x, theta).', Q.').';
     
     % Likelihood
+    Ny = size(R, 1);
+    LR = chol(R).';
     py = struct();
     py.fast = true;
-    py.logpdf = @(y, x, t) logmvnpdf(y.', g(x, t).', R.').';
+    py.rand = @(x, theta) g(x, theta) + LR*randn(Ny, size(x, 2));
+    py.logpdf = @(y, x, theta) logmvnpdf(y.', g(x, theta).', R.').';
     
     % Complete model
     model = struct('px0', px0, 'px', px, 'py', py);
