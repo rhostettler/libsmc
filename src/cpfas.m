@@ -108,8 +108,13 @@ function [x, sys] = cpfas(model, y, xtilde, theta, J, par)
         j = beta(randi(J, 1));
         xf = cat(3, tmp.xf);
         xtilde = squeeze(xf(:, j, :));
-    end
         
+        % TODO: Ugly hack; can be solved on the line above already
+        if Nx == 1
+            xtilde = xtilde.';
+        end
+    end
+    
     %% Initialize
     % Draw initial particles
     x = model.px0.rand(J-1);

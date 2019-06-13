@@ -27,6 +27,11 @@ function [alpha, state] = sample_ancestor_index_rs(model, y, xt, x, lw, theta, L
 % AUTHOR(S)
 %   2017-2019 -- Roland Hostettler <roland.hostettler@angstrom.uu.se>
 
+% TODO:
+%   * Should we choose L adaptively/automagically based on the number of
+%     particles J? Should be a good idea. Also check what Taghavi & company
+%     have in their paper.
+
     %% Defaults
     narginchk(6, 7);
     if nargin < 7 || isempty(L)

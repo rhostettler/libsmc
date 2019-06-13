@@ -1,3 +1,6 @@
+*_export.m
+examples/Savefiles
+examples/Export
 src/psis
 *DS_Store*
 *.swp
