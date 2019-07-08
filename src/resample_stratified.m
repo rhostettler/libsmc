@@ -1,19 +1,17 @@
-function out = parchk(in, defaults)
-% # Helper to validate function parameters
+function alpha = resample_stratified(w)
+% # Stratified resampling
 % ## Usage
-% * `out = parchk(in, defaults)`
+% * `alpha = resample_stratified(w)`
 %
 % ## Description
-% Validates a set of function parameters, that is, checks for missing
-% parameters, sets defaults, and complains about unknown parameters.
-% Parameters are name-value pairs.
+% Stratified resampling, returns randomized indices `alpha` such that
+% Pr(alpha) = w(alpha).
 %
 % ## Input
-% * `in`: Struct of parameters to validate.
-% * `defaults`: Struct of default parameters.
+% * `w`: Probabilities.
 %
 % ## Output
-% * `out`: Struct of validated parameters.
+% * `alpha`: The resampled indices.
 %
 % ## Authors
 % 2017-present -- Roland Hostettler <roland.hostettler@angstrom.uu.se>
@@ -35,14 +33,24 @@ function out = parchk(in, defaults)
 % with libsmc. If not, see <http://www.gnu.org/licenses/>.
 %}
 
-    narginchk(2, 2);
-    out = defaults;
-    fields = fieldnames(in);
-    for i = 1:length(fields)
-        if isfield(defaults, fields{i})
-            out.(fields{i}) = in.(fields{i});
-        else
-            warning('Discarding unknown parameter ''%s''.', fields{i});
-        end
+% TODO:
+% * Check that it really is stratified resampling.
+
+    narginchk(1, 1);
+    w = w/sum(w);
+    J = length(w);
+    alpha = zeros(1, J);
+    k = 0;
+    u = 1/J*rand();
+    for j = 1:J
+        % Get the no. of times we need to replicate this sample; if N = 0,
+        % the followin lines will just ignore it.
+        N = floor(J*(w(j)-u)) + 1;
+%        if N > 0
+            alpha(k+1:k+N) = j*ones(1, N);
+            k = k + N;
+%        end
+        u = u + N/J - w(j);
     end
+    alpha = alpha(randperm(J));
 end

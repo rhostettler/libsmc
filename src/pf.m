@@ -45,16 +45,12 @@ function [xhat, sys] = pf(y, t, model, M, par)
 %               r   Boolean resampling indicator.
 %
 % AUTHORS
-%   2018 -- Roland Hostettler <roland.hostettler@aalto.fi>
+%   2018-12-06 -- Roland Hostettler <roland.hostettler@aalto.fi>
 
 % TODO:
 %   * Add possibility of adding output function (see gibbs_pmcmc())
 %   * Add a field to the parameters that can be used to calculate custom
 %     'integrals'
-%   * update documentation
-%   * rename to sir_pf or similar again?
-%   * 't' is not 'time' anymore but a generic parameter; need proper
-%     handling for that.
 
     %% Defaults
     narginchk(3, 5);
@@ -65,8 +61,9 @@ function [xhat, sys] = pf(y, t, model, M, par)
         par = struct();
     end
     def = struct(...
+        'sample', @sample_bootstrap, ...
         'resample', @resample_ess, ...
-        'update', @sis_update_bootstrap ...
+        'calculate_incremental_weights', @calculate_incremental_weights_bootstrap ...
     );
     par = parchk(par, def);
     modelchk(model);
@@ -89,7 +86,6 @@ function [xhat, sys] = pf(y, t, model, M, par)
         sys(1).w = exp(lw);
         sys(1).alpha = 1:M;
         sys(1).r = false;
-        sys(1).q = [];
         return_sys = true;
     else
         return_sys = false;
@@ -98,19 +94,18 @@ function [xhat, sys] = pf(y, t, model, M, par)
     
     %% Process Data
     for n = 2:N
-        %% Update
-        % Resample
+        %% Sample
         [alpha, lw, r] = par.resample(lw);
+        xp = par.sample(y(:, n), x(:, alpha), t(n), model);
         
-        % Sample new particles
-        [x, lv, q] = par.update(y(:, n), x(:, alpha), t(n), model);
-        
-        % Calculate and normalize weights
+        %% Weights
+        lv = par.calculate_incremental_weights(y(:, n), xp, x, t(n), model);
         lw = lw+lv;
         lw = lw-max(lw);
         w = exp(lw);
         w = w/sum(w);
         lw = log(w);
+        x = xp;
         
         %% Point Estimate(s)
         % Note: We don't have a state estimate for the initial state (in
@@ -124,7 +119,6 @@ function [xhat, sys] = pf(y, t, model, M, par)
             sys(n).w = w;
             sys(n).alpha = alpha;
             sys(n).r = r;
-            sys(n).q = q;
         end
     end
     
