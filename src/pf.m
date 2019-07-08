@@ -5,40 +5,44 @@ function [xhat, sys] = pf(model, y, theta, J, par)
 % * `[xhat, sys] = sisr_pf(model, y, theta, J, par)`
 %
 % ## Description
-% `sisr_pf` is a generic sequential importance sampling with resampling
-% particle filter (PF). It can be used as anything ranging from the 
-% bootstrap PF to the auxiliary particle filter.
+% `pf` is a generic sequential importance sampling with resampling particle
+% filter (PF). It can be used as anything ranging from the bootstrap PF to
+% the auxiliary particle filter.
 %
 % In its minimal form, a bootstrap particle filter with conditional
 % resampling based on the effective sample size with `J = 100` particles is
 % used.
 %
 % ## Input
-% **TODO** Update documentation from here on.
-%   y       Ny times N matrix of measurements.
-%   t       1 times N vector of timestamps.
-%   model   State space model structure.
-%   M       Number of particles (optional, default: 100).
-%   par     Structure of additional (optional) parameters:
+% * `model`: State-space model struct.
+% * `y`: dy-times-N matrix of measurements.
+% * `theta`: dtheta-times-1 vector or dtheta-times-N matrix of additional
+%   parameters (default: `[]`).
+% * `J`: Number of particles (default: 100).
+% * `par`: Struct of additional (optional) parameters:
+%     - `[alpha, lw, r] = resample(lw)`: Function handle to the resampling 
+%       function. The input `lw` is the log-weights and the function must 
+%       return the indices of the resampled particles (`alpha`), the log-
+%       weights of the resampled (`lw`) particles, as well as a boolean
+%       indicating whether resampling was performed or not (`r`). Default:
+%       `@resample_ess`.
+%     - `xp = sample(model, y, x, theta)`: Function handle to the sampling
+%       function to draw new state vectors. Default: `@sample_bootstrap`.
+%     - `lv = calculate_incremental_weights(model, y, xp, x, theta)`:
+%       Function to calculate the weight increment `lv`. This function must
+%       match the `sample` function. Default:
+%       `@calculate_incremental_weights_bootstrap`.
 %
-%           [alpha, lw, r] = resample(lw)
-%               Function handle to the resampling function. The argument lw
-%               is the log-weights and the must return the indices of the
-%               resampled (alpha) particles, the weights of the resampled 
-%               (lw) particles, as well as a bool indicating whether
-%               resampling was performed or not.
-%
-% ## Outut
-%   xhat    Minimum mean squared error state estimate (calculated using the
-%           marginal filtering density).
-%   sys     Particle system array of structs with the following fields:
-%           
-%               xf  Nx times M matrix of particles for the marginal
-%                   filtering density.
-%               wf  1 times M vector of the particle weights for the
-%                   marginal filtering density.
-%               af  1 times M vector of ancestor indices.
-%               r   Boolean resampling indicator.
+% ## Output
+% * `xhat`: Minimum mean squared error filter state estimate (calculated 
+%   using the marginal filtering density).
+% * `sys`: Particle system array of structs with the following fields:
+%     - `x`: dx-times-J matrix of particles for the marginal filtering 
+%       density.
+%     - `w`: 1-times-J vector of the particle weights for the marginal
+%       filtering density.
+%     - `alpha`: 1-times-J vector of ancestor indices.
+%     - `r`: Boolean resampling indicator.
 %
 % ## Authors
 % 2018-present -- Roland Hostettler <roland.hostettler@angstrom.uu.se>
@@ -61,13 +65,11 @@ function [xhat, sys] = pf(model, y, theta, J, par)
 %}
 
 % TODO:
-% * Update documentation
 % * Add possibility of adding output function (see gibbs_pmcmc())
+% * Add possibility of calculating arbitrary MC integrals based on the
+%   marginal filtering density; defaults to mean.
 % * Add a field to the parameters that can be used to calculate custom
 %   'integrals'
-% * update documentation
-% * 't' is not 'time' anymore but a generic parameter; need proper
-%   handling for that.
 
     %% Defaults
     narginchk(2, 5);
@@ -131,14 +133,13 @@ function [xhat, sys] = pf(model, y, theta, J, par)
         % * Resampling will have to return the weights used for resampling
         %   in the future (for APF)
         % * par.sample will have to return the density sampled from in the 
-        %   future
+        %   future (to un-break the optimal proposal approximations)
         [alpha, lw, r] = par.resample(lw);
         xp = par.sample(model, y(:, n), x(:, alpha), theta(n));
         
         % Calculate and normalize weights
         % TODO:
         % * This should take the importance density as an argument
-        % * t should be theta
         % * To make this fit for APF, this will have to take the resampling weights into account
         lv = par.calculate_incremental_weights(model, y(:, n), xp, x, theta(n));
         lw = lw+lv;

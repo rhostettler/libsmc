@@ -4,7 +4,7 @@
 
 % Housekeeping
 clear variables;
-addpath ../src;
+addpath ../external ../src;
 
 %% Parameters
 N = 100;        % No. of time samples
@@ -67,20 +67,13 @@ for l = 1:L
         xs(:, n, l) = x;
     end
 
-    %% Estimate
-if 0
-    % KF
+    %% Filters
+    % KF (requires EKF/UKF toolbox)
     tic;
-    xhat_kf(:, :, l) = kf(y(:, :, l), F, G, Q, R, m0, P0);
+%     xhat_kf(:, :, l) = kf_loop(y(:, :, l), F, G, Q, R, m0, P0);
+    xhat_kf(:, :, l) = kf_loop(m0, P0, G, R, y(:, :, l), F, Q);
     t_kf(l) = toc;
     
-    % RTS
-    tic;
-    [m, P, mp, Pp] = kf(y(:, :, l), F, G, Q, R, m0, P0);
-    xhat_rts(:, :, l) = rtss(F, m, P, mp, Pp);
-    t_rts(l) = toc;
-end
-
     % Bootstrap PF (indirect)
     tic;
     [xhat_bpf1(:, :, l), sys_bpf1] = pf(model, y(:, :, l), [], J);
@@ -96,7 +89,17 @@ if 0
     tic;
     [xhat_bpf(:, :, l)] = bootstrap_pf(y(:, :, l), 1:N, model, J);
     t_bpf(l) = toc;
-        
+end
+    
+    
+    %% Smoothers
+if 0
+    % RTS
+    tic;
+    [m, P, mp, Pp] = kf(y(:, :, l), F, G, Q, R, m0, P0);
+    xhat_rts(:, :, l) = rtss(F, m, P, mp, Pp);
+    t_rts(l) = toc;
+    
     % Kronander-Sch?n-Dahlin smoother
     tic;
     [xhat_ksd(:, :, l)] = ksd_ps(y(:, :, l), 1:N, model, 2*J, J);
@@ -116,18 +119,25 @@ end
 end
 
 %% Stats
-
-fprintf('\nResults for K = %d MC simulations, M = %d particles.\n\n', L, J);
+fprintf('\nResults for L = %d MC simulations, J = %d particles.\n\n', L, J);
 fprintf('\tRMSE\t\tTime\n');
 fprintf('\t----\t\t----\n');
 
+[mean_rmse_none, var_rmse_none] = trmse(xs);
+[mean_rmse_kf, var_rmse_kf] = trmse(xhat_kf - xs);
 [mean_rmse_bpf1, var_rmse_bpf1] = trmse(xhat_bpf1 - xs);
+
+fprintf('None\t%.4f (%.2f)\t%.2e (%.2e)\n', ...
+    mean_rmse_none, sqrt(var_rmse_none), 0, 0 ...
+);
+fprintf('KF\t%.4f (%.2f)\t%.2e (%.2e)\n', ...
+    mean_rmse_kf, sqrt(var_rmse_kf), mean(t_kf), std(t_kf) ...
+);
 fprintf('BPF (1)\t%.4f (%.2f)\t%.2e (%.2e)\n', ...
     mean_rmse_bpf1, sqrt(var_rmse_bpf1), mean(t_bpf1), std(t_bpf1) ...
 );
+
 if 0
-fprintf('KF\t%.4f (%.2f)\t%.2e (%.2e)\n', ...
-    mean(trms(xhat_kf-xs)), std(trms(xhat_kf-xs)), mean(t_kf), std(t_kf));
 fprintf('SISR-PF\t%.4f (%.2f)\t%.2e (%.2e)\n', ...
     mean(trms(xhat_sisr-xs)), std(trms(xhat_sisr-xs)), mean(t_sisr), std(t_sisr));
 fprintf('B-PF\t%.4f (%.2f)\t%.2e (%.2e)\n', ...
