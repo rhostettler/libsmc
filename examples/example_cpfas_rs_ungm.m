@@ -2,25 +2,20 @@
 %
 % 2017-2019 -- Roland Hostettler <roland.hostettler@angstrom.uu.se>
 
-% TODO:
-%   * Implement debugging in sample_ancestor_index_rs
-%   * See other TODOs throughout the file
-%   * Add burn-in
-
 % Housekeeping
 clear variables;
-addpath(genpath('../src'));
+addpath ../src;
 addpath ../../gp-pmcmc/lib
 rng(511);
 
 %% Parameters
-N = 100;    % No. of time samples
-J = 100;    % No. of particles
+N = 100;            % No. of time samples
+J = 100;            % No. of particles
 Kburnin = 50;
 K = 100;
-Kmcmc = Kburnin+K;    % No. of MCMC samples
-L = J;      % No. of rejection sampling trials
-P = 100;      % No. of MC simulations
+Kmcmc = Kburnin+K;  % No. of MCMC samples
+L = J;              % No. of rejection sampling trials
+P = 100;            % No. of MC simulations
 
 %% Model
 Nx = 1;
@@ -32,7 +27,6 @@ P0 = 5;
 f = @(x, n) 0.5*x + 25*x./(1+x.^2) + 8*cos(1.2*n);
 g = @(x, n) 0.05*x.^2;
 model = model_nonlinear_gaussian(f, Q, g, R, m0, P0);
-model.px.kappa = normpdf(0, 0, sqrt(Q));
 
 % TODO: This is the gibbs_pmcmc() curiosity that needs sorting out
 model = @(theta) model;

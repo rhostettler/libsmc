@@ -106,12 +106,8 @@ function [x, sys] = cpfas(model, y, xtilde, theta, J, par)
         beta = resample_stratified(tmp(end).wf);
         j = beta(randi(J, 1));
         xf = cat(3, tmp.xf);
-        xtilde = squeeze(xf(:, j, :));
-        
-        % TODO: Ugly hack; can be solved on the line above already
-        if size(xf, 2) == 1
-            xtilde = xtilde.';
-        end
+        [dx, ~, N] = size(xf);
+        xtilde = reshape(xf(:, j, :), [dx, N]);        
     end
     
     %% Initialize
@@ -133,7 +129,7 @@ function [x, sys] = cpfas(model, y, xtilde, theta, J, par)
 
     %% Prepare and preallocate    
     % Determine state size
-    dx = size(model.px0.rand(1), 1);
+    dx = size(x, 1);
     N = N+1;
     sys = initialize_sys(N, dx, J);
     sys(1).x = x;
