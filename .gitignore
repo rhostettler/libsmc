@@ -2,6 +2,7 @@ external
 *_export.m
 examples/Savefiles
 examples/Export
+examples/export_*
 src/psis
 *DS_Store*
 *.swp
