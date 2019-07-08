@@ -59,6 +59,7 @@ end
     px.fast = true;
     px.rand = @(x, theta) f(x, theta) + LQ*randn(Nx, size(x, 2));
     px.logpdf = @(xp, x, theta) logmvnpdf(xp.', f(x, theta).', Q.').';
+    px.pdf = @(xp, x, theta) mvnpdf(xp.', f(x, theta).', Q.').';
     
     % Likelihood
     Ny = size(R, 1);
@@ -67,6 +68,7 @@ end
     py.fast = true;
     py.rand = @(x, theta) g(x, theta) + LR*randn(Ny, size(x, 2));
     py.logpdf = @(y, x, theta) logmvnpdf(y.', g(x, theta).', R.').';
+    py.pdf = @(y, x, theta) mvnpdf(y.', g(x, theta).', R.').';
     
     % Complete model
     model = struct('px0', px0, 'px', px, 'py', py);

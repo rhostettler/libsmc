@@ -28,9 +28,7 @@ function [alpha, state] = sample_ancestor_index_rs(model, y, xt, x, lw, theta, L
 %   2017-2019 -- Roland Hostettler <roland.hostettler@angstrom.uu.se>
 
 % TODO:
-%   * Should we choose L adaptively/automagically based on the number of
-%     particles J? Should be a good idea. Also check what Taghavi & company
-%     have in their paper.
+%   * Describe 'state'
 
     %% Defaults
     narginchk(6, 7);
@@ -67,7 +65,7 @@ function [alpha, state] = sample_ancestor_index_rs(model, y, xt, x, lw, theta, L
         u = rand(1);
         gamma = exp(lvtilde(alpha) - llambda);
         if gamma > 1
-            warning('Acceptance probability larger than one, check your bounding constant.');
+            warning('Acceptance probability larger than one, check the bounding constant.');
         end
         accepted = (u <= gamma);
         l = l+1;
@@ -79,14 +77,21 @@ function [alpha, state] = sample_ancestor_index_rs(model, y, xt, x, lw, theta, L
         % Calculate non-normalized ancestor weights for the trajectories
         % not proposed by rejection sampling, then sample an ancestor index
         lvtilde(~ivtilde) = calculate_ancestor_weights(model, y, xt, x(:, ~ivtilde), lw(~ivtilde), theta);
+        ivtilde(~ivtilde) = 1;
         wtilde = exp(lvtilde-max(lvtilde));
         wtilde = wtilde/sum(wtilde);
         tmp = sysresample(wtilde);
         alpha = tmp(randi(J, 1));
+        l = NaN;
     end
     
-    %% Return some info
+    %% Debugging
     if nargout >= 2
-        state = struct('l', l, 'accepted', accepted);
+        % Calculate true acceptance probabilities for debugging
+        lvtilde(~ivtilde) = calculate_ancestor_weights(model, y, xt, x(:, ~ivtilde), lw(~ivtilde), theta);
+        vtilde = exp(lvtilde);
+        dgamma = vtilde/max(vtilde) - vtilde/exp(llambda);
+
+        state = struct('l', l, 'accepted', accepted, 'dgamma', dgamma);
     end
 end
