@@ -1,8 +1,8 @@
 function [xhat, sys] = pf(model, y, theta, J, par)
 % # Sequential importance sampling with resampling particle filter
 % ## Usage
-% * `xhat = sisr_pf(model, y)`
-% * `[xhat, sys] = sisr_pf(model, y, theta, J, par)`
+% * `xhat = pf(model, y)`
+% * `[xhat, sys] = pf(model, y, theta, J, par)`
 %
 % ## Description
 % `pf` is a generic sequential importance sampling with resampling particle
@@ -45,7 +45,7 @@ function [xhat, sys] = pf(model, y, theta, J, par)
 %     - `r`: Boolean resampling indicator.
 %
 % ## Authors
-% 2018-present -- Roland Hostettler <roland.hostettler@angstrom.uu.se>
+% 2018-present -- Roland Hostettler
 
 %{
 % This file is part of the libsmc Matlab toolbox.
@@ -68,8 +68,6 @@ function [xhat, sys] = pf(model, y, theta, J, par)
 % * Add possibility of adding output function (see gibbs_pmcmc())
 % * Add possibility of calculating arbitrary MC integrals based on the
 %   marginal filtering density; defaults to mean.
-% * Add a field to the parameters that can be used to calculate custom
-%   'integrals'
 
     %% Defaults
     narginchk(2, 5);
