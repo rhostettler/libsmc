@@ -9,46 +9,30 @@ function [xhat, sys] = ps(model, y, theta, Jf, Js, par, sys)
 % [1].
 %
 % ## Input
-%
-%
-%
-%   y       Ny times N matrix of measurements.
-%   t       1 times N vector of timestamps.
-%   model   State space model structure.
-%   Mf      Number of particles for the filter (if no sys is provided, see
-%           below; optional, default: 250).
-%   Ms      Number of particles for the smoother (optional, default: 100).
-%   par     Structure of additional (optional) parameters. May contain any
-%           parameter accepted by bootstrap_pf (if no sys is provided, see
-%           below) plus the following FFBSi-specific parameters:
-%
-%               TODO: Write these out once finalized (in particular wrt
-%               rejection-sampling based version)
-%
-%   sys     Particle system as obtained from a forward filter. If no system
-%           is provided, a bootstrap particle filter is run to generate it.
-%           sys must contain the following fields:
-%
-%               xf  Matrix of particles for the marginal filtering density.
-%               wf  Vector of particle weights for the marginal filtering
-%                   density.
+% * `model`: State-space model struct.
+% * `y`: dy-times-N matrix of measurements.
+% * `theta`: Additional parameters.
+% * `Jf`: Number of particles to be used in the forward filter (if no `sys`
+%   is provided, see below; default: 250).
+% * `Js`: Number of particles for the smoother (default: 100).
+% * `par`: Struct of additional parameters. The following parameters are
+%   supported:
+%     - `[xhat, sys] = par.smooth(model, y, theta, Js, sys)`: The actual
+%       smoothing function used for the backward recursion (default:
+%       `@smooth_ffbsi`).
+% * `sys`: Particle system as obtained from a forward filter. If no system
+%   is provided, a bootstrap particle filter is run to generate it. `sys`
+%   must contain the following fields:
+%     - `x`: Matrix of particles for the marginal filtering density.
+%     - `w`: Vector of particle weights for the marginal filtering density.
 %
 % ## Output
-%
-%
-%   xhat    Minimum mean squared error state estimate (calculated using the
-%           smoothing density).
-%   sys     Particle system (array of structs) with all the fields returned
-%           by the bootstrap particle filter (or the ones in the particle
-%           system provided as an input) plus the following fields:
-%           
-%               xs  Nx times M matrix of particles for the joint smoothing
-%                   density.
-%               ws  1 times M matrix of particle weights for the joint
-%                   smoothing density.
-%               rs  Indicator whether the corresponding particle was
-%                   sampled using rejection sampling or not.
-%
+% * `xhat`: dx-times-N matrix of smoothed state estimates (MMSE).
+% * `sys`: Particle system array of structs for the smoothed particle
+%   system. At least the following fields are added (additional fields may
+%   be added by the specific backward recursions):
+%     - `xs`: Smoothed particles.
+%     - `ws`: Smoothed particle weights.
 %
 % ## References
 % 1. W. Fong, S. J. Godsill, A. Doucet, and M. West, "Monte Carlo 
@@ -57,7 +41,7 @@ function [xhat, sys] = ps(model, y, theta, Jf, Js, par, sys)
 %    2002.
 %
 % ## Authors
-% 2017-present -- Roland Hostettler <roland.hostettler@angstrom.uu.se>
+% 2017-present -- Roland Hostettler
 
 %{
 % This file is part of the libsmc Matlab toolbox.
@@ -75,14 +59,6 @@ function [xhat, sys] = ps(model, y, theta, Jf, Js, par, sys)
 % You should have received a copy of the GNU General Public License along 
 % with libsmc. If not, see <http://www.gnu.org/licenses/>.
 %}
-
-% TODO
-%   * Implement rejection sampling w/ adaptive stopping => should go into
-%     an outside function
-%   * Check how I can merge that with other backward simulation smoothers,
-%     e.g. ksd_ps (they use exactly the same logic in the beginning, only
-%     the smooth()-function is different
-%   * Clean up code for the individual backward functions.
 
     %% Defaults
     narginchk(2, 7);
