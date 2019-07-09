@@ -112,16 +112,14 @@ function [xhat, sys] = pf(model, y, theta, J, par)
     %% Preallocate
     dx = size(x, 1);
     N = N+1;
-    if nargout >= 2
+    return_sys = (nargout >= 2);
+    if return_sys
         sys = initialize_sys(N, dx, J);
         sys(1).x = x;
         sys(1).w = exp(lw);
         sys(1).alpha = 1:J;
         sys(1).r = false;
         sys(1).q = [];          % TODO: Should this be removed? Check.
-        return_sys = true;
-    else
-        return_sys = false;
     end
     xhat = zeros(dx, N-1);
     

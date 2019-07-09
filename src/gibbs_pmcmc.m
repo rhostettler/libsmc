@@ -139,12 +139,10 @@ function [xs, thetas, sys] = gibbs_pmcmc(model, y, theta0, lambda, K, par)
     xs = zeros(dx, N, Kmcmc+1);         % Sampled trajectories
     thetas = theta0*ones(1, Kmcmc+1);   % Sampled parameters    
     
-    if nargout >= 3                     % Cell array of particle systems.
-        sys = cell(1, Kmcmc+1);         % Only used when explicitly 
-        return_sys = true;              % requested to avoid Matlab 
-    else                                % crashes.
-        return_sys = false;
-    end
+    return_sys = (nargout >= 3);        % Cell array of particle systems.
+    if return_sys                       % Only used when explicitly 
+        sys = cell(1, Kmcmc+1);         % requested to avoid Matlab 
+    end                                 % crashes.
 
     %% MCMC sampling
     for k = 2:Kmcmc+1
