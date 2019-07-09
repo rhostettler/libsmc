@@ -9,7 +9,7 @@ addpath ../src;
 %% Parameters
 N = 100;        % No. of time samples
 J = 200;        % No. of particles
-L = 10;          % No. of Monte Carlo runs
+L = 20;         % No. of Monte Carlo runs
 
 %% Model
 m0 = zeros(2, 1);
@@ -27,7 +27,6 @@ model = model_lgssm(F, Q, G, R, m0, P0);
 model_pmcmc = @(theta) model;   % TODO: This should not be necessary in the end, but gibbs_pmcmc needs to be updated first.
 
 %% Optimal proposal
-% For comparison
 Sn = G*Q*G' + R;
 Ln = Q*G'/Sn;
 mu = @(x, y) F*x + Ln*(y - G*F*x);
@@ -50,8 +49,8 @@ xhat_bpf = xs;
 xhat_opt = xs;
 
 m_rts = xs;
-% xhat_ksd = xs;
-% xhat_ffbsi = xs;
+xhat_ksd = xs;
+xhat_ffbsi = xs;
 xhat_cpfas = xs;
 
 t_kf = zeros(1, L);
@@ -59,11 +58,12 @@ t_bpf = t_kf;
 t_opt = t_kf;
 
 t_rts = t_kf;
-% t_ksd = t_kf;
-% t_ffbsi = t_kf;
+t_ksd = t_kf;
+t_ffbsi = t_kf;
 t_cpfas = t_kf;
 
 %% MC simulations
+fh = pbar(L);
 for l = 1:L
     %% Simulate System
     x = m0 + chol(P0).'*randn(2, 1);
@@ -102,19 +102,23 @@ if 0
     tic;
     [xhat_ksd(:, :, l)] = ksd_ps(y(:, :, l), 1:N, model, 2*J, J);
     t_ksd(l) = toc;
+end
     
     % FFBSi smoother
     tic;
-    xhat_ffbsi(:, :, l) = ffbsi_ps(y(:, :, l), 1:N, model, 2*J, J);
+    xhat_ffbsi(:, :, l) = ps(model, y(:, :, l), [], 2*J, J);
     t_ffbsi(l) = toc;
-end
     
     % CPF-AS MCMC smoother
     tic;
     [x_cpfas, sys] = gibbs_pmcmc(model_pmcmc, y(:, :, l));
     xhat_cpfas(:, :, l) = mean(x_cpfas(:, 2:end, :), 3);
     t_cpfas(l) = toc;
+    
+    %% Progress
+    pbar(l, fh);
 end
+pbar(0, fh);
 
 %% Calculate stats
 % Filters
@@ -126,40 +130,39 @@ end
 % Smoothers
 [mean_rmse_rts, var_rmse_rts] = trmse(m_rts - xs);
 [mean_rmse_cpfas, var_rmse_cpfas] = trmse(xhat_cpfas - xs);
+[mean_rmse_ksd, var_rmse_ksd] = trmse(xhat_ksd - xs);
+[mean_rmse_ffbsi, var_rmse_ffbsi] = trmse(xhat_ffbsi - xs);
 
 %% Print stats
 % Header
 fprintf('\nResults for L = %d MC simulations, J = %d particles.\n\n', L, J);
-fprintf('\tRMSE\t\tTime\n');
-fprintf('\t----\t\t----\n');
+fprintf('\tRMSE\t\t\tTime\n');
+fprintf('\t----\t\t\t----\n');
 
 % Filters
 fprintf('None\t%.4f (%.2f)\t%.2e (%.2e)\n', ...
     mean_rmse_none, sqrt(var_rmse_none), 0, 0 ...
 );
-fprintf('KF\t%.4f (%.2f)\t%.2e (%.2e)\n', ...
+fprintf('KF\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
     mean_rmse_kf, sqrt(var_rmse_kf), mean(t_kf), std(t_kf) ...
 );
-fprintf('BPF\t%.4f (%.2f)\t%.2e (%.2e)\n', ...
+fprintf('BPF\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
     mean_rmse_bpf, sqrt(var_rmse_bpf), mean(t_bpf), std(t_bpf) ...
 );
-fprintf('OPT PF\t%.4f (%.2f)\t%.2e (%.2e)\n', ...
+fprintf('OPT PF\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
     mean_rmse_opt, sqrt(var_rmse_opt), mean(t_opt), std(t_opt) ...
 );
 
 % Smoothers
-fprintf('RTSS\t%.4f (%.2f)\t%.2e (%.2e)\n', ...
+fprintf('RTSS\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
     mean_rmse_rts, sqrt(var_rmse_rts), mean(t_rts), std(t_rts) ...
 );
-fprintf('CPF-AS\t%.4f (%.2f)\t%.2e (%.2e)\n', ...
+fprintf('CPF-AS\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
     mean_rmse_cpfas, sqrt(var_rmse_cpfas), mean(t_cpfas), std(t_cpfas) ...
 );
-
-if 0
-fprintf('KSD-PS\t%.4f (%.2f)\t%.2e (%.2e)\n', ...
-    mean(trms(xhat_ksd-xs)), std(trms(xhat_ksd-xs)), mean(t_ksd), std(t_ksd) ...
+fprintf('KSD-PS\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
+    mean_rmse_ksd, sqrt(var_rmse_ksd), mean(t_ksd), std(t_ksd) ...
 );
-fprintf('FFBSi\t%.4f (%.2f)\t%.2e (%.2e)\n', ...
-    mean(trms(xhat_ffbsi-xs)), std(trms(xhat_ffbsi-xs)), mean(t_ffbsi), std(t_ffbsi) ...
+fprintf('FFBSi\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
+    mean_rmse_ffbsi, sqrt(var_rmse_ffbsi), mean(t_ffbsi), std(t_ffbsi) ...
 );
-end
