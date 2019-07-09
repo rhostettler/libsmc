@@ -1,7 +1,7 @@
 # Sequential importance sampling with resampling particle filter
 ## Usage
-* `xhat = sisr_pf(model, y)`
-* `[xhat, sys] = sisr_pf(model, y, theta, J, par)`
+* `xhat = pf(model, y)`
+* `[xhat, sys] = pf(model, y, theta, J, par)`
  
 ## Description
 `pf` is a generic sequential importance sampling with resampling particle
@@ -44,4 +44,4 @@ used.
     - `r`: Boolean resampling indicator.
  
 ## Authors
-2018-present -- Roland Hostettler <roland.hostettler@angstrom.uu.se>
+2018-present -- Roland Hostettler

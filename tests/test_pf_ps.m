@@ -5,6 +5,7 @@
 % Housekeeping
 clear variables;
 addpath ../src;
+rng(2872);
 
 %% Parameters
 N = 100;        % No. of time samples
@@ -39,6 +40,8 @@ par_opt = struct( ...
     'sample', @(model, y, x, theta) sample_generic(model, y, x, theta, q), ...
     'calculate_incremental_weights', @(model, y, xp, x, theta) calculate_incremental_weights_generic(model, y, xp, x, theta, q) ...
 );
+
+par_ksd = struct('smooth', @smooth_ksd);
 
 %% Preallocate
 xs = zeros(size(m0, 1), N, L);
@@ -97,12 +100,10 @@ for l = 1:L
     m_rts(:, :, l) = rts_smooth(m_kf(:, :, l), P_kf, F, Q);
     t_rts(l) = toc;
 
-if 0
-    % Kronander-Sch?n-Dahlin smoother
+    % Kronander-Schon-Dahlin smoother
     tic;
-    [xhat_ksd(:, :, l)] = ksd_ps(y(:, :, l), 1:N, model, 2*J, J);
+    [xhat_ksd(:, :, l)] = ps(model, y(:, :, l), [], 2*J, J, par_ksd);
     t_ksd(l) = toc;
-end
     
     % FFBSi smoother
     tic;

@@ -63,7 +63,7 @@ function [xhat, sys] = smooth_ffbsi(model, y, theta, Js, sys, par)
     );
     par = parchk(par, def);
     
-    %% Backward recursion
+    %% Preallocate
     N = length(sys);
     [dx, Jf] = size(sys(N).x);
     xhat = zeros(dx, N);

@@ -1,14 +1,33 @@
 function [xhat, sys] = smooth_ksd(model, y, theta, Js, sys)
 % # Kronander-Schon-Dahlin marginal particle smoother
 % ## Usage
+% * `xhat = smooth_ksd(model, y, theta, Js, sys)`
+% * `[xhat, sys] = smooth_ksd(model, y, theta, Js, sys)`
 % 
 % ## Description
+% Backward sampling particle smoother targeting the marginal smoothing
+% density according to [1].
+% 
+% Note that it is well known that this smoother is biased, see [1].
 %
 % ## Input
+% * `model`: State-space model struct.
+% * `y`: dy-times-N matrix of measurements.
+% * `theta`: Additional parameters.
+% * `Js`: No. of smoothing particles.
+% * `sys`: Particle system array of structs.
 %
 % ## Output
+% * `xhat`: dx-times-N matrix of smoothed state estimates (MMSE).
+% * `sys`: Particle system array of structs for the smoothed particle
+%   system. The following fields are added by `smooth_ffbsi`:
+%     - `xs`: Smoothed particles.
+%     - `ws`: Smoothed particle weights.
 %
 % ## References
+% 1. J. Kronander, T. B. Schon, and J. Dahlin, "Backward sequential Monte 
+%    Carlo for marginal smoothing," in IEEE Workshop on Statistical Signal 
+%    Processing (SSP), June 2014, pp. 368-371.
 %
 % ## Authors
 % 2017-present -- Roland Hostettler
@@ -30,11 +49,6 @@ function [xhat, sys] = smooth_ksd(model, y, theta, Js, sys)
 % with libsmc. If not, see <http://www.gnu.org/licenses/>.
 %}
 
-% TODO:
-% * This file is WIP, **do not add to version control**
-% * Documentation
-% * Split into functions where appropriate
-
     %% Defaults
     narginchk(5, 5);
     return_sys = (nargout >= 2);
@@ -43,17 +57,18 @@ function [xhat, sys] = smooth_ksd(model, y, theta, Js, sys)
     N = length(sys);
     [dx, Jf] = size(sys(N).x);
     xhat = zeros(dx, N);
+    lv = zeros(1, Js);
     y = [NaN*size(y, 1), y];
     theta = [NaN*size(theta, 1), theta];
     
-    % TODO: Maybe we don't need these here?
     px = model.px;
     py = model.py;
 
     %% Initialize backward recursion
     ir = resample_stratified(sys(N).w);
-    beta = ir(randperm(Jf, Js));
-    xs = sys(N).x(:, beta);
+    alpha = ir(randperm(Jf, Js));
+    xs = sys(N).x(:, alpha);
+    lw = log(sys(N).w(alpha));
     xhat(:, N) = mean(xs, 2);
     ws = 1/Js*ones(1, Js);
     lws = log(ws);
@@ -65,14 +80,10 @@ function [xhat, sys] = smooth_ksd(model, y, theta, Js, sys)
     
     %% Backward recursion
     for n = N-1:-1:1
-        % Sample ancestors
-        lw = -Inf*ones(1, Js);
-        [indf, locf] = ismember(xs.', sys(n+1).x.', 'rows'); %%%% this just finds 'beta again?'
-        lw(indf) = log(sys(n+1).w(:, locf));
+        % Sample ancestor particles
         if py.fast
             lv = lws + py.logpdf(y(:, n+1)*ones(1, Js), xs, theta(n+1)) - lw;
         else
-            lv = zeros(1, Js);
             for j = 1:Js
                 lv(j) = lws(j) + py.logpdf(y(:, n+1), xs(:, j), theta(n+1)) - lw(j);
             end
@@ -82,17 +93,24 @@ function [xhat, sys] = smooth_ksd(model, y, theta, Js, sys)
         beta = resample_stratified(v);
         xp = xs(:, beta);
         
-        % Sample new particles
+        % Sample smoothed particles
         ir = resample_stratified(sys(n).w);
         alpha = ir(randperm(Jf, Js));
         xs = sys(n).x(:, alpha);
+        lw = log(sys(n).w(alpha));
                 
-        % Calculate weights
-        lws = calculate_smoothed_weights(xp, xs, theta(n+1), px);
+        % Calculate smoothed particle weights
+        if px.fast
+            lws = px.logpdf(xp, xs, theta(n+1));
+        else
+            for j = 1:Js
+                lws(:, j) = px.logpdf(xp(:, j), xs(:, j), theta(n+1));
+            end
+        end
         ws = exp(lws-max(lws));
         ws = ws/sum(ws);
         
-        %% Estimate
+        % Estimate
         xhat(:, n) = xs*ws';
         
         %% Store
@@ -106,18 +124,4 @@ function [xhat, sys] = smooth_ksd(model, y, theta, Js, sys)
     % Strip x[0] as we don't want it in the MMSE estiamte; if needed, it
     % can be obtained from sys.
     xhat = xhat(:, 2:N);
-end
-
-%% Smoothed Weights
-function lws = calculate_smoothed_weights(xp, x, t, px)
-    %% Calculate Weights
-    if px.fast
-        lws = px.logpdf(xp, x, t);
-    else
-        Js = size(xp, 2);
-        lws = zeros(1, Js);
-        for j = 1:Js
-            lws(:, j) = px.logpdf(xp(:, j), x(:, j), t);
-        end
-    end
 end
