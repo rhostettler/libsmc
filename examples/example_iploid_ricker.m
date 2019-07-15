@@ -68,21 +68,22 @@ model = struct('px0', px0, 'px', px, 'py', py);
 
 %% Algorithm parameters
 % Approximation of the optimal proposal using linearization
-if 0
 Gx = @(x, theta) 10*exp(x);
 R = @(x, n) 10*exp(x);
+if 0
 par_lin = struct( ...
     'update', @(y, x, theta, model) sis_update_gaussian_taylor(y, x, theta, model, f, @(x, theta) Q, g, Gx, R, L) ...
 );
+end
 
 % SLR using unscented transform
-Nx = size(m0, 1);
-[wm, wc, c] = ut_weights(Nx, alpha, beta, kappa);
-Xi = ut_sigmas(zeros(Nx, 1), eye(Nx), c);
+dx = size(m0, 1);
+[wm, wc, c] = ut_weights(dx, alpha, beta, kappa);
+Xi = ut_sigmas(zeros(dx, 1), eye(dx), c);
 par_sp = struct( ...
-    'update', @(y, x, theta, model) sis_update_gaussian_sp(y, x, theta, model, f, @(x, theta) Q, g, R, L, Xi, wm, wc) ...
+    'sample', @(model, y, x, theta) sample_gaussian_sp(model, y, x, theta, f, @(x, theta) Q, g, R, L, Xi, wm, wc), ...
+    'calculate_incremental_wights', @calculate_incremental_weights_generic ...
 );
-end
 
 % Closed-form solution to the moment integrals
 Ey = @(m, P, theta) 10*exp(m + P/2);
@@ -126,7 +127,7 @@ for k = 1:K
     % Bootstrap PF
     if L == 1
         tic;
-        [xhat_bpf(:, :, k), sys_bpf] = pf(y, 1:N, model, J);
+        [xhat_bpf(:, :, k), sys_bpf] = pf(model, y, [], J);
         t_bpf(k) = toc;
         r_bpf(:, :, k) = cat(2, sys_bpf.r);
     else
@@ -136,18 +137,16 @@ for k = 1:K
     % Taylor series approximation of SLR
 if 0
     tic;
-    [xhat_lin(:, :, k), sys_lin] = pf(y, 1:N, model, J, par_lin);
+    [xhat_lin(:, :, k), sys_lin] = pf(model, y, [], J, par_lin);
     t_lin(k) = toc;
     r_lin(:, :, k) = cat(2, sys_lin.r);
 end
 
     % SLR using sigma-points, L iterations
-if 0
     tic;
-    [xhat_sp(:, :, k), sys_sp] = pf(y, 1:N, model, J, par_sp);
+    [xhat_sp(:, :, k), sys_sp] = pf(model, y, [], J, par_sp);
     t_sp(k) = toc;
     r_sp(:, :, k) = cat(2, sys_sp.r);
-end
     
     % SLR using closed-form expressions, L iterations
     tic;
