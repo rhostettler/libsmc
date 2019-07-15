@@ -143,7 +143,7 @@ function [x, sys] = cpfas(model, y, xtilde, theta, J, par)
         % Resample, then sample J-1 particles and set the Jth to the seed 
         % trajectory
         alpha = resample_stratified(exp(lw));       % TODO: Should we be able to change this through par?
-        xp = par.sample(model, y(:, n), x(:, alpha), theta(:, n));
+        [xp, q] = par.sample(model, y(:, n), x(:, alpha), theta(:, n));
         xp(:, J) = xtilde(:, n);
         
         % Ancestor index (note: the ancestor weights have to be calculated
@@ -151,7 +151,7 @@ function [x, sys] = cpfas(model, y, xtilde, theta, J, par)
         [alpha(J), state] = par.sample_ancestor_index(model, y(:, n), xtilde(:, n), x, lw, theta(:, n));
         
         %% Calculate weights
-        lw = par.calculate_incremental_weights(model, y(:, n), xp, x(:, alpha), theta(:, n));
+        lw = par.calculate_incremental_weights(model, y(:, n), xp, x(:, alpha), theta(:, n), q);
         w = exp(lw-max(lw));
         w = w/sum(w);
         lw = log(w);

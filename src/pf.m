@@ -68,6 +68,10 @@ function [xhat, sys] = pf(model, y, theta, J, par)
 % * Add possibility of adding output function (see gibbs_pmcmc())
 % * Add possibility of calculating arbitrary MC integrals based on the
 %   marginal filtering density; defaults to mean.
+% * In order to make it more generic (i.e., make it fit for APF), the
+%   resampling-function should return the (log-)weights used for resampling
+%   and calculate_incremental_weights should take these weights as an
+%   input.
 
     %% Defaults
     narginchk(2, 5);
@@ -117,27 +121,19 @@ function [xhat, sys] = pf(model, y, theta, J, par)
         sys(1).w = exp(lw);
         sys(1).alpha = 1:J;
         sys(1).r = false;
-        sys(1).q = [];          % TODO: Should this be removed? Check.
+        sys(1).q = [];
     end
     xhat = zeros(dx, N-1);
     
     %% Process Data
     for n = 2:N
         %% Update
-        % Sample
-        % TODO:
-        % * Resampling will have to return the weights used for resampling
-        %   in the future (for APF)
-        % * par.sample will have to return the density sampled from in the 
-        %   future (to un-break the optimal proposal approximations)
+        % (Re-)Sample
         [alpha, lw, r] = par.resample(lw);
-        xp = par.sample(model, y(:, n), x(:, alpha), theta(n));
+        [xp, q] = par.sample(model, y(:, n), x(:, alpha), theta(n));
         
         % Calculate and normalize weights
-        % TODO:
-        % * This should take the importance density as an argument
-        % * To make this fit for APF, this will have to take the resampling weights into account
-        lv = par.calculate_incremental_weights(model, y(:, n), xp, x, theta(n));
+        lv = par.calculate_incremental_weights(model, y(:, n), xp, x, theta(n), q);
         lw = lw+lv;
         lw = lw-max(lw);
         w = exp(lw);
@@ -157,7 +153,7 @@ function [xhat, sys] = pf(model, y, theta, J, par)
             sys(n).w = w;
             sys(n).alpha = alpha;
             sys(n).r = r;
-%             sys(n).q = q;
+            sys(n).q = q;
         end
     end
     

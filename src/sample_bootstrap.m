@@ -1,7 +1,7 @@
-function xp = sample_bootstrap(model, ~, x, theta)
+function [xp, q] = sample_bootstrap(model, ~, x, theta)
 % # Sample from the bootstrap importance density
 % ## Usage
-% * `xp = sample_bootstrap(model, y, x, theta)`
+% * `[xp, q] = sample_bootstrap(model, y, x, theta)`
 %
 % ## Description
 % Samples a set of new samples x[n] from the bootstrap importance density,
@@ -17,6 +17,7 @@ function xp = sample_bootstrap(model, ~, x, theta)
 %
 % ## Output
 % * `xp`: The new samples x[n].
+% * `q`: The importance density sampled from.
 %
 % ## Author
 % 2018-present -- Roland Hostettler <roland.hostettler@angstrom.uu.se>
@@ -41,6 +42,9 @@ function xp = sample_bootstrap(model, ~, x, theta)
 % TODO:
 % * Return the importance density (to be compatible with other sampling
 %   functions)
+% * Consider rewriting this such that we just define the q used in this
+%   case and then pass this to sample_generic, now that we have to redefine
+%   the sampling density anyway.
 
     narginchk(4, 4);
     [dx, J] = size(x);
@@ -53,4 +57,5 @@ function xp = sample_bootstrap(model, ~, x, theta)
             xp(:, j) = px.rand(x(:, j), theta);
         end
     end
+    q = repmat(px, [1, J]); % TODO: This does not work with calculate_incremental_weights_generic yet.
 end

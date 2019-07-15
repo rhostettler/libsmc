@@ -1,7 +1,7 @@
-function lv = calculate_incremental_weights_bootstrap(model, y, xp, ~, theta)
+function lv = calculate_incremental_weights_bootstrap(model, y, xp, ~, theta, ~)
 % # Incremental particle weights for the bootstrap particle filter
 % ## Usage
-% * `lv = calculate_incremental_weights_bootstrap(model, y, xp, ~, theta)`
+% * `lv = calculate_incremental_weights_bootstrap(model, y, xp, ~, theta, ~)`
 %
 % ## Description
 % Calculates the incremental particle weights for the bootstrap particle
@@ -42,7 +42,7 @@ function lv = calculate_incremental_weights_bootstrap(model, y, xp, ~, theta)
 % with libsmc. If not, see <http://www.gnu.org/licenses/>.
 %}
 
-    narginchk(5, 5);
+    narginchk(6, 6);
     J = size(xp, 2);
     py = model.py;
     if py.fast

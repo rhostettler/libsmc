@@ -1,4 +1,4 @@
-function xp = sample_generic(model, y, x, theta, q)
+function [xp, q] = sample_generic(model, y, x, theta, q)
 % # Sample from an arbitrary importance density
 % ## Usage
 % * `xp = sample_generic(model, y, x, theta, q)`
@@ -16,6 +16,7 @@ function xp = sample_generic(model, y, x, theta, q)
 %
 % ## Output
 % * `xp`: The new samples x[n].
+% * `q`: Importance density sampled from.
 %
 % ## See also
 % calculate_incremental_weights_generic

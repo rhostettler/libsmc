@@ -41,19 +41,30 @@ function lv = calculate_incremental_weights_generic(model, y, xp, x, theta, q)
 % with libsmc. If not, see <http://www.gnu.org/licenses/>.
 %}
 
+% TODO:
+% * Consider simply expanding q if it's a scalar; check computational
+%   drawback.
+
     narginchk(6, 6);
     J = size(xp, 2);
+    lv = zeros(1, J);
     px = model.px;
-    py = model.py;    
-    if px.fast && py.fast && q.fast
+    py = model.py;
+    if px.fast && py.fast && length(q) == 1 && q.fast
         lv = ( ...
             py.logpdf(y*ones(1, J), xp, theta) ...
             + px.logpdf(xp, x, theta) ...
             - q.logpdf(xp, y*ones(1, J), x, theta) ...
         );
+    elseif length(q) == J
+        for j = 1:J
+            lv(j) = ( ...
+                py.logpdf(y, xp(:, j), theta) ...
+                + px.logpdf(xp(:, j), x(:, j), theta) ...
+                - q(j).logpdf(xp(:, j), y, x(:, j), theta) ...
+            );
+        end
     else
-        J = size(xp, 2);
-        lv = zeros(1, J);
         for j = 1:J
             lv(j) = ( ...
                 py.logpdf(y, xp(:, j), theta) ...

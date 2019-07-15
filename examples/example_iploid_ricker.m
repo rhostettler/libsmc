@@ -14,10 +14,12 @@
 
 % Housekeeping
 clear variables;
-addpath(genpath('../src'));
+addpath('../src');
 rng(5011);
+if 0
 spmd
     warning('off', 'all');
+end
 end
 warning('off', 'all');
 
@@ -66,6 +68,7 @@ model = struct('px0', px0, 'px', px, 'py', py);
 
 %% Algorithm parameters
 % Approximation of the optimal proposal using linearization
+if 0
 Gx = @(x, theta) 10*exp(x);
 R = @(x, n) 10*exp(x);
 par_lin = struct( ...
@@ -79,13 +82,15 @@ Xi = ut_sigmas(zeros(Nx, 1), eye(Nx), c);
 par_sp = struct( ...
     'update', @(y, x, theta, model) sis_update_gaussian_sp(y, x, theta, model, f, @(x, theta) Q, g, R, L, Xi, wm, wc) ...
 );
+end
 
 % Closed-form solution to the moment integrals
 Ey = @(m, P, theta) 10*exp(m + P/2);
 Cy = @(m, P, theta) 100*exp(2*m + P)*(exp(P) - 1) + 10*exp(m + P/2);
 Cyx = @(m, P, theta) 10*P*exp(m + P/2);
 par_cf = struct( ...
-    'update', @(y, x,theta, model) sis_update_gaussian_cf(y, x, theta, model, f, @(x, theta) Q, Ey, Cy, Cyx, L) ...
+    'sample', @(model, y, x, theta) sample_gaussian_cf(model, y, x, theta, f, @(x, theta) Q, Ey, Cy, Cyx, L), ...
+    'calculate_incremental_weights', @calculate_incremental_weights_generic ...
 );
 
 %% MC Simulations
@@ -129,20 +134,24 @@ for k = 1:K
     end
     
     % Taylor series approximation of SLR
+if 0
     tic;
     [xhat_lin(:, :, k), sys_lin] = pf(y, 1:N, model, J, par_lin);
     t_lin(k) = toc;
     r_lin(:, :, k) = cat(2, sys_lin.r);
+end
 
     % SLR using sigma-points, L iterations
+if 0
     tic;
     [xhat_sp(:, :, k), sys_sp] = pf(y, 1:N, model, J, par_sp);
     t_sp(k) = toc;
     r_sp(:, :, k) = cat(2, sys_sp.r);
+end
     
     % SLR using closed-form expressions, L iterations
     tic;
-    [xhat_cf(:, :, k), sys_cf] = pf(y, 1:N, model, J, par_cf);
+    [xhat_cf(:, :, k), sys_cf] = pf(model, y, [], J, par_cf);
     t_cf(k) = toc;
     r_cf(:, :, k) = cat(2, sys_cf.r);
 
@@ -153,6 +162,7 @@ pbar(0, fh);
 
 
 %%
+if 0
 mps = zeros(L+1, N);
 Pps = zeros(L+1, N);
 
@@ -174,6 +184,7 @@ end
     title('Variance');
     drawnow();
     pause(1);
+end
 end
 
 %% Results
