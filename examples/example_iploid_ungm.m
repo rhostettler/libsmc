@@ -66,6 +66,10 @@ R = 1e-4;
 m0 = 0;
 P0 = 5;
 
+% If set to true, measurements are noise-free and a uniform
+% pseudo-likelihood with variance R is used rather than the true Gaussian
+abc = true;
+
 % Save the simulation results (true/false)
 store = false;
 
@@ -77,13 +81,13 @@ Gx = @(x, theta) 2*x/20;
 
 % libsmc model structure
 model = model_nonlinear_gaussian(f, Q, g, R, m0, P0, true);
-if 0
-epsilon = sqrt(12*R)/2; % To match variance with Gaussian used previously
-model.py = struct( ...
-    'fast', true, ...
-    'rand', @(x, theta) g(x, theta) - epsilon + epsilon*rand(1, size(x, 2)), ...
-    'logpdf', @(y, x, theta) log(unifpdf(y-g(x, theta), -epsilon, epsilon)) ...
-);
+if abc
+    epsilon = sqrt(12*R)/2; % To match variance with Gaussian used previously
+    model.py = struct( ...
+        'fast', true, ...
+        'rand', @(x, theta) g(x, theta) - epsilon + epsilon*rand(1, size(x, 2)), ...
+        'logpdf', @(y, x, theta) log(unifpdf(y-g(x, theta), -epsilon, epsilon)) ...
+    );
 end
 
 %% Sampling algorithms
@@ -144,18 +148,18 @@ theta = 1:N;
 % par
 for k = 1:K
     %% Model simulation
-    [xs(:, :, k), ys(:, :, k)] = simulate_model(model, 1:N, N);
-
-if 0
-    y = zeros(1, N);
-    x = model.px0.rand(1);
-    for n = 1:N
-        x = model.px.rand(x, theta(n));
-        y(:, n) = g(x, n);        
-        xs(:, n, k) = x;
+    if ~abc
+        [xs(:, :, k), ys(:, :, k)] = simulate_model(model, 1:N, N);
+    else
+        y = zeros(1, N);
+        x = model.px0.rand(1);
+        for n = 1:N
+            x = model.px.rand(x, theta(n));
+            y(:, n) = g(x, n);        
+            xs(:, n, k) = x;
+        end
+        ys(:, :, k) = y;
     end
-    ys(:, :, k) = y;
-end
 
     %% Estimation
     % Grid filter
@@ -232,6 +236,7 @@ fprintf( ...
 );
 
 %% Plots
+% TODO: Clean these up; not all of them are used anymore.
 if K == 1
     figure(1); clf();
     plot(xs); hold on;
@@ -254,7 +259,7 @@ if K == 1
     title('Data');
 end
 
-%% Plots
+% more plots
 if K == 1
     figure(11); clf();
     waterfall(xg, 1:N, w); hold on;
@@ -286,9 +291,9 @@ if K == 1
 
     %     plot(x_bpf, w_bpf, 'o');
         plot(x_bpf, zeros(1, J), '.');
-    %     set(gca, 'YScale', 'log');
+%         set(gca, 'YScale', 'log');
         legend('Grid', 'True state', 'SP', 'BPF');
-        ylim([-0.01, max(w(n, :))]);
+       ylim([-0.01, max(w(n, :))]);
 
         pause();
     end
@@ -296,8 +301,10 @@ end
 
 % ESS
 figure(3); clf();
-gp_plot(theta, mean(ess_bpf, 3), var(ess_bpf, [], 3)); hold on; grid on;
-gp_plot(theta, mean(ess_sp, 3), var(ess_bpf, [], 3));
+plot(theta, mean(ess_bpf, 3)); hold on; grid on;
+plot(theta, mean(ess_sp, 3));
+% gp_plot(theta, mean(ess_bpf, 3), var(ess_bpf, [], 3)); hold on; grid on;
+% gp_plot(theta, mean(ess_sp, 3), var(ess_bpf, [], 3));
 legend('BPF', 'ICE-PF (SP)');
 title('Effective sample size');
 
