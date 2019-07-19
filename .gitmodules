@@ -1,0 +1,3 @@
+[submodule "external/psis"]
+	path = external/psis
+	url = https://github.com/avehtari/PSIS.git
