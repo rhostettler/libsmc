@@ -81,8 +81,9 @@ function model = model_lgssm(F, Q, G, R, m0, P0)
                                                                   % that are not ready yet...).
     
     % State transition densiy and likelihood
+    dy = size(G(NaN), 1);
     px = pdf_mvn(dx, @(x, theta) F(theta)*x, @(~, theta) Q(theta), true);
-    py = pdf_mvn(dx, @(x, theta) G(theta)*x, @(~, theta) R(theta), true);
+    py = pdf_mvn(dy, @(x, theta) G(theta)*x, @(~, theta) R(theta), true);
     
     % Complete model
 if 0

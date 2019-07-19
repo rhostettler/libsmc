@@ -1,6 +1,23 @@
 % Test of the basic PF/PS algorithms
 %
-% 2017-present -- Roland Hostettler <roland.hostettler@angstrom.uu.se>
+% 2017-present -- Roland Hostettler
+
+%{
+% This file is part of the libsmc Matlab toolbox.
+%
+% libsmc is free software: you can redistribute it and/or modify it under 
+% the terms of the GNU General Public License as published by the Free 
+% Software Foundation, either version 3 of the License, or (at your option)
+% any later version.
+% 
+% libsmc is distributed in the hope that it will be useful, but WITHOUT ANY
+% WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+% FOR A PARTICULAR PURPOSE. See the GNU General Public License for more 
+% details.
+% 
+% You should have received a copy of the GNU General Public License along 
+% with libsmc. If not, see <http://www.gnu.org/licenses/>.
+%}
 
 % Housekeeping
 clear variables;
@@ -69,14 +86,7 @@ t_cpfas = t_kf;
 fh = pbar(L);
 for l = 1:L
     %% Simulate System
-    x = m0 + chol(P0).'*randn(2, 1);
-    for n = 1:N
-        qn = chol(Q).'*randn(size(Q, 1), 1);
-        x = F*x + qn;
-        rn = chol(R).'*randn(size(R, 1), 1);
-        y(:, n, l) = G*x + rn;
-        xs(:, n, l) = x;
-    end
+    [xs(:, :, l), y(:, :, l)] = simulate_model(model, [], N);
 
     %% Filters
     % KF (requires EKF/UKF toolbox)
@@ -123,16 +133,16 @@ pbar(0, fh);
 
 %% Calculate stats
 % Filters
-[mean_rmse_none, var_rmse_none] = trmse(xs);
-[mean_rmse_kf, var_rmse_kf] = trmse(m_kf - xs);
-[mean_rmse_bpf, var_rmse_bpf] = trmse(xhat_bpf - xs);
-[mean_rmse_opt, var_rmse_opt] = trmse(xhat_opt - xs);
+e_rmse_none = trmse(xs);
+e_rmse_kf = trmse(m_kf - xs);
+e_rmse_bpf = trmse(xhat_bpf - xs);
+e_rmse_opt = trmse(xhat_opt - xs);
 
 % Smoothers
-[mean_rmse_rts, var_rmse_rts] = trmse(m_rts - xs);
-[mean_rmse_cpfas, var_rmse_cpfas] = trmse(xhat_cpfas - xs);
-[mean_rmse_ksd, var_rmse_ksd] = trmse(xhat_ksd - xs);
-[mean_rmse_ffbsi, var_rmse_ffbsi] = trmse(xhat_ffbsi - xs);
+e_rmse_rts = trmse(m_rts - xs);
+e_rmse_cpfas = trmse(xhat_cpfas - xs);
+e_rmse_ksd = trmse(xhat_ksd - xs);
+e_rmse_ffbsi = trmse(xhat_ffbsi - xs);
 
 %% Print stats
 % Header
@@ -142,28 +152,28 @@ fprintf('\t----\t\t\t----\n');
 
 % Filters
 fprintf('None\t%.4f (%.2f)\t%.2e (%.2e)\n', ...
-    mean_rmse_none, sqrt(var_rmse_none), 0, 0 ...
+    mean(e_rmse_none), std(e_rmse_none), 0, 0 ...
 );
 fprintf('KF\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
-    mean_rmse_kf, sqrt(var_rmse_kf), mean(t_kf), std(t_kf) ...
+    mean(e_rmse_kf), std(e_rmse_kf), mean(t_kf), std(t_kf) ...
 );
 fprintf('BPF\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
-    mean_rmse_bpf, sqrt(var_rmse_bpf), mean(t_bpf), std(t_bpf) ...
+    mean(e_rmse_bpf), std(e_rmse_bpf), mean(t_bpf), std(t_bpf) ...
 );
 fprintf('OPT PF\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
-    mean_rmse_opt, sqrt(var_rmse_opt), mean(t_opt), std(t_opt) ...
+    mean(e_rmse_opt), std(e_rmse_opt), mean(t_opt), std(t_opt) ...
 );
 
 % Smoothers
 fprintf('RTSS\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
-    mean_rmse_rts, sqrt(var_rmse_rts), mean(t_rts), std(t_rts) ...
+    mean(e_rmse_rts), std(e_rmse_rts), mean(t_rts), std(t_rts) ...
 );
 fprintf('CPF-AS\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
-    mean_rmse_cpfas, sqrt(var_rmse_cpfas), mean(t_cpfas), std(t_cpfas) ...
+    mean(e_rmse_cpfas), std(e_rmse_cpfas), mean(t_cpfas), std(t_cpfas) ...
 );
 fprintf('KSD-PS\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
-    mean_rmse_ksd, sqrt(var_rmse_ksd), mean(t_ksd), std(t_ksd) ...
+    mean(e_rmse_ksd), std(e_rmse_ksd), mean(t_ksd), std(t_ksd) ...
 );
 fprintf('FFBSi\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
-    mean_rmse_ffbsi, sqrt(var_rmse_ffbsi), mean(t_ffbsi), std(t_ffbsi) ...
+    mean(e_rmse_ffbsi), std(e_rmse_ffbsi), mean(t_ffbsi), std(t_ffbsi) ...
 );
