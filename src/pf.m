@@ -44,7 +44,7 @@ function [xhat, sys] = pf(model, y, theta, J, par)
 %     - `w`: 1-times-J vector of the particle weights for the marginal
 %       filtering density.
 %     - `alpha`: 1-times-J vector of ancestor indices.
-%     - `r`: Boolean resampling indicator.
+%     - `rstate`: Resampling algorithm state.
 %
 % ## Authors
 % 2018-present -- Roland Hostettler
@@ -122,7 +122,7 @@ function [xhat, sys] = pf(model, y, theta, J, par)
         sys(1).x = x;
         sys(1).w = exp(lw);
         sys(1).alpha = 1:J;
-        sys(1).r = false;
+        sys(1).rstate = struct('r', false, 'ess', J);
         sys(1).q = [];
     end
     xhat = zeros(dx, N-1);
@@ -131,7 +131,7 @@ function [xhat, sys] = pf(model, y, theta, J, par)
     for n = 2:N
         %% Update
         % (Re-)Sample
-        [alpha, lw, r] = par.resample(lw);
+        [alpha, lw, rstate] = par.resample(lw);
         [xp, q] = par.sample(model, y(:, n), x(:, alpha), theta(n));
         
         % Calculate and normalize weights
@@ -154,7 +154,7 @@ function [xhat, sys] = pf(model, y, theta, J, par)
             sys(n).x = x;
             sys(n).w = w;
             sys(n).alpha = alpha;
-            sys(n).r = r;
+            sys(n).rstate = rstate;
             sys(n).q = q;
         end
     end

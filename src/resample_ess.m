@@ -1,8 +1,8 @@
-function [alpha, lw, r] = resample_ess(lw, par)
+function [alpha, lw, state] = resample_ess(lw, par)
 % # Effective sample size-based conditional resampling
 % ## Usage
-% * `[alpha, lw, r] = resample_ess(lw)`
-% * `[alpha, lw, r] = resample_ess(lw, par)`
+% * `[alpha, lw, state] = resample_ess(lw)`
+% * `[alpha, lw, state] = resample_ess(lw, par)`
 %
 % ## Description
 % Conditional resampling function using an estimate of the effecitve sample
@@ -25,7 +25,9 @@ function [alpha, lw, r] = resample_ess(lw, par)
 % ## Output
 % * `alpha`: Resampled indices.
 % * `lw`: Log-weights.
-% * `r`: Indicator whether resampling was performed or not.
+% * `state`: Resampling state, contains the following fields:
+%     - `ess`: Effective sample size.
+%     - `r`: Resampling indicator (`true` if resampled, `false` otherwise).
 %
 % ## Authors
 % 2017-present -- Roland Hostettler <roland.hostettler@angstrom.uu.se>
@@ -71,4 +73,5 @@ function [alpha, lw, r] = resample_ess(lw, par)
         alpha = par.resample(w);
         lw = log(1/J)*ones(1, J);
     end
+    state = struct('r', r, 'ess', Jess);
 end

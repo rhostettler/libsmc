@@ -38,7 +38,11 @@ function [ermse, mrmse, varrmse] = trmse(e)
 %}
 
     narginchk(1, 1);
-    ermse = sqrt(mean(sum(e.^2, 1), 2));
-    mrmse = mean(ermse);
-    varrmse = var(ermse);
+    ermse = squeeze(sqrt(mean(sum(e.^2, 1), 2)));
+    if nargout >= 2
+        mrmse = mean(ermse);
+    end
+    if nargout >= 3
+        varrmse = var(ermse);
+    end
 end
