@@ -107,6 +107,8 @@ function [xp, q] = sample_gaussian_sp(model, y, x, theta, f, Q, g, R, L, Xi, wm,
     Y = zeros(dy, I);
     qj = struct('fast', false', 'rand', @(y, x, theta) [], 'logpdf', @(xp, y, x, theta) [], 'mp', [], 'Pp', []);
     q = repmat(qj, [1, J]);
+    mps = zeros(dx, L+1);
+    Pps = zeros(dx, dx, L+1);
     
     % For all particles...
     for j = 1:J
@@ -118,10 +120,8 @@ function [xp, q] = sample_gaussian_sp(model, y, x, theta, f, Q, g, R, L, Xi, wm,
         Pp = Px;
         Lp = chol(Pp, 'lower');
         
-        if 0 %qout
-            q(j).mp(:, 1) = mp;
-            q(j).Pp(:, :, 1) = Pp;
-        end
+        mps(:, 1) = mp;
+        Pps(:, :, 1) = Pp;
 
         % Iterations
         l = 0;
@@ -179,10 +179,8 @@ function [xp, q] = sample_gaussian_sp(model, y, x, theta, f, Q, g, R, L, Xi, wm,
                 Lp = Lt;
             end
             
-            if 0 %qout
-                q(j).mp(:, l+2) = mp;
-                q(j).Pp(:, :, l+2) = Pp;
-            end
+            mps(:, l+2) = mp;
+            Pps(:, :, l+2) = Pp;
             
             l = l + 1;
             done = (l >= L) || done;
@@ -193,9 +191,9 @@ function [xp, q] = sample_gaussian_sp(model, y, x, theta, f, Q, g, R, L, Xi, wm,
             'fast', false, ...
             'rand', @(y, x, theta) mp + Lp*randn(dx, 1), ...
             'logpdf', @(xp, y, x, theta) logmvnpdf(xp.', mp.', Pp).', ...
-            ... % TODO: This is inconsistent, but we'll keep it for now.
-            'mp', mp, ...   
-            'Pp', Pp ...
+            ... % TODO: Adding mps and Pps is inconsistent, but we'll keep it for now.
+            'mp', mps, ...
+            'Pp', Pps ...
         );
         xp(:, j) = qj.rand(y, x(:, j), theta);
         q(j) = qj;

@@ -133,7 +133,7 @@ function [xhat, sys] = pf(model, y, theta, J, par)
         [xp, q] = par.sample(model, y(:, n), x(:, alpha), theta(n));
         
         % Calculate and normalize weights
-        lv = par.calculate_incremental_weights(model, y(:, n), xp, x, theta(n), q);
+        lv = par.calculate_incremental_weights(model, y(:, n), xp, x(:, alpha), theta(n), q);
         lw = lw+lv;
         lw = lw-max(lw);
         w = exp(lw);

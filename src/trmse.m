@@ -1,8 +1,8 @@
-function [mrmse, varrmse, ermse] = trmse(e)
+function [ermse, mrmse, varrmse] = trmse(e)
 % # Time-averaged root mean squared error
 % ## Usage
-% * `mrmse = trmse(e)`
-% * `[mrmse, varrmse, ermse] = trmse(e)`
+% * `ermse = trmse(e)`
+% * `[ermse, mrmse, varrmse] = trmse(e)`
 %
 % ## Description
 % Calculates the mean (and variance) of the time-averaged root mean squared

@@ -35,22 +35,25 @@ function alpha = resample_stratified(w)
 
 % TODO:
 % * Check that it really is stratified resampling.
+% * Get rid of the outer loop
 
     narginchk(1, 1);
-    w = w/sum(w);
-    J = length(w);
-    alpha = zeros(1, J);
-    k = 0;
-    u = 1/J*rand();
-    for j = 1:J
-        % Get the no. of times we need to replicate this sample; if N = 0,
-        % the followin lines will just ignore it.
-        N = floor(J*(w(j)-u)) + 1;
-%        if N > 0
-            alpha(k+1:k+N) = j*ones(1, N);
-            k = k + N;
-%        end
-        u = u + N/J - w(j);
+    [I, J] = size(w);
+    w = w./(sum(w, 2)*ones(1, J));
+    alpha = zeros(I, J);
+    for i = 1:I
+        k = 0;
+        u = 1/J*rand();
+        for j = 1:J
+            % Get the no. of times we need to replicate this sample; if N = 0,
+            % the following lines will just ignore it.
+            N = floor(J*(w(i, j)-u)) + 1;
+    %        if N > 0
+                alpha(i, k+1:k+N) = j*ones(1, N);
+                k = k + N;
+    %        end
+            u = u + N/J - w(i, j);
+        end
+        alpha(i, :) = alpha(i, randperm(J));
     end
-    alpha = alpha(randperm(J));
 end

@@ -66,6 +66,7 @@ function model = model_nonlinear_gaussian(f, Q, g, R, m0, P0, fast)
     L0 = chol(P0).';
     px0 = struct();
     px0.rand = @(J) m0*ones(1, J)+L0*randn(dx, J);
+    px0.logpdf = @(x, theta) logmvnpdf(x.', m0.', P0).';
     
     % State transition densiy, likelihood
     px = pdf_mvn(dx, f, Q, fast);
