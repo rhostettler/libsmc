@@ -26,8 +26,10 @@ function [xhat, sys] = pf(model, y, theta, J, par)
 %       weights of the resampled (`lw`) particles, as well as a boolean
 %       indicating whether resampling was performed or not (`r`). Default:
 %       `@resample_ess`.
-%     - `xp = sample(model, y, x, theta)`: Function handle to the sampling
-%       function to draw new state vectors. Default: `@sample_bootstrap`.
+%     - `[xp, q] = sample(model, y, x, theta)`: Function handle to the 
+%       sampling function to draw new state vectors. The output are the new
+%       samples `xp` as well as the importance density `q` sampled from 
+%       (struct or array of structs). Default: `@sample_bootstrap`.
 %     - `lv = calculate_incremental_weights(model, y, xp, x, theta)`:
 %       Function to calculate the weight increment `lv`. This function must
 %       match the `sample` function. Default:

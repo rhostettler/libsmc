@@ -119,7 +119,6 @@ function [xp, q] = sample_gaussian_sp(model, y, x, theta, f, Q, g, R, L, Xi, wm,
         mp = mx;
         Pp = Px;
         Lp = chol(Pp, 'lower');
-        
         mps(:, 1) = mp;
         Pps(:, :, 1) = Pp;
 
@@ -179,9 +178,11 @@ function [xp, q] = sample_gaussian_sp(model, y, x, theta, f, Q, g, R, L, Xi, wm,
                 Lp = Lt;
             end
             
+            % Store current linearization
             mps(:, l+2) = mp;
             Pps(:, :, l+2) = Pp;
             
+            % Convergence criteria and tests
             l = l + 1;
             done = (l >= L) || done;
         end
