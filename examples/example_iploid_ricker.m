@@ -12,16 +12,36 @@
 %
 % 2019 -- Roland Hostettler
 
+%{
+% This file is part of the libsmc Matlab toolbox.
+%
+% libsmc is free software: you can redistribute it and/or modify it under 
+% the terms of the GNU General Public License as published by the Free 
+% Software Foundation, either version 3 of the License, or (at your option)
+% any later version.
+% 
+% libsmc is distributed in the hope that it will be useful, but WITHOUT ANY
+% WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+% FOR A PARTICULAR PURPOSE. See the GNU General Public License for more 
+% details.
+% 
+% You should have received a copy of the GNU General Public License along 
+% with libsmc. If not, see <http://www.gnu.org/licenses/>.
+%}
+
+% TODO:
+% * Clean up the code
+
 % Housekeeping
 clear variables;
-addpath('../src');
+addpath ../src;
 rng(5011);
 if 0
 spmd
-    warning('off', 'all');
+    warning('off', 'libsmc:warning');
 end
 end
-warning('off', 'all');
+warning('off', 'libsmc:warning');
 
 %% Parameters
 % Filter parameters
@@ -70,17 +90,17 @@ model = struct('px0', px0, 'px', px, 'py', py);
 % Approximation of the optimal proposal using linearization
 Gx = @(x, theta) 10*exp(x);
 R = @(x, n) 10*exp(x);
-if 0
+slr_lin = @(m, P, theta) slr_taylor(m, P, theta, g, Gx, R);
 par_lin = struct( ...
-    'update', @(y, x, theta, model) sis_update_gaussian_taylor(y, x, theta, model, f, @(x, theta) Q, g, Gx, R, L) ...
+    'sample', @(model, y, x, theta) sample_gaussian(model, y, x, theta, f, @(x, theta) Q, slr_lin, L), ...
+    'calculate_incremental_wights', @calculate_incremental_weights_generic ...
 );
-end
 
 % SLR using unscented transform
 dx = size(m0, 1);
 [wm, wc, c] = ut_weights(dx, alpha, beta, kappa);
 Xi = ut_sigmas(zeros(dx, 1), eye(dx), c);
-slr_sp = @(mp, Pp, theta) slr_sp(mp, Pp, theta, g, R, Xi, wm, wc);
+slr_sp = @(m, P, theta) slr_sp(m, P, theta, g, R, Xi, wm, wc);
 par_sp = struct( ...
     'sample', @(model, y, x, theta) sample_gaussian(model, y, x, theta, f, @(x, theta) Q, slr_sp, L), ...
     'calculate_incremental_wights', @calculate_incremental_weights_generic ...
@@ -90,7 +110,7 @@ par_sp = struct( ...
 Ey = @(m, P, theta) 10*exp(m + P/2);
 Cy = @(m, P, theta) 100*exp(2*m + P)*(exp(P) - 1) + 10*exp(m + P/2);
 Cyx = @(m, P, theta) 10*P*exp(m + P/2);
-slr_cf = @(mp, Pp, theta) slr_cf(mp, Pp, theta, Ey, Cy, Cyx);
+slr_cf = @(m, P, theta) slr_cf(m, P, theta, Ey, Cy, Cyx);
 par_cf = struct( ...
     'sample', @(model, y, x, theta) sample_gaussian(model, y, x, theta, f, @(x, theta) Q, slr_cf, L), ...
     'calculate_incremental_weights', @calculate_incremental_weights_generic ...
@@ -131,30 +151,28 @@ for k = 1:K
         tic;
         [xhat_bpf(:, :, k), sys_bpf] = pf(model, y, [], J);
         t_bpf(k) = toc;
-        r_bpf(:, :, k) = cat(2, sys_bpf.r);
+%         r_bpf(:, :, k) = cat(2, sys_bpf.r);
     else
         xhat_bpf(:, :, k) = NaN*ones(1, N);
     end
     
     % Taylor series approximation of SLR
-if 0
     tic;
     [xhat_lin(:, :, k), sys_lin] = pf(model, y, [], J, par_lin);
     t_lin(k) = toc;
-    r_lin(:, :, k) = cat(2, sys_lin.r);
-end
+%     r_lin(:, :, k) = cat(2, sys_lin.r);
 
     % SLR using sigma-points, L iterations
     tic;
     [xhat_sp(:, :, k), sys_sp] = pf(model, y, [], J, par_sp);
     t_sp(k) = toc;
-    r_sp(:, :, k) = cat(2, sys_sp.r);
+%     r_sp(:, :, k) = cat(2, sys_sp.r);
     
     % SLR using closed-form expressions, L iterations
     tic;
     [xhat_cf(:, :, k), sys_cf] = pf(model, y, [], J, par_cf);
     t_cf(k) = toc;
-    r_cf(:, :, k) = cat(2, sys_cf.r);
+%     r_cf(:, :, k) = cat(2, sys_cf.r);
 
     %% Progress
     pbar(k, fh);

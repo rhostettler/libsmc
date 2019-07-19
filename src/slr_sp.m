@@ -1,8 +1,8 @@
-function [A, b, Omega] = slr_sp(mp, Pp, theta, g, R, Xi, wm, wc)
+function [A, b, Omega] = slr_sp(m, P, theta, g, R, Xi, wm, wc)
 % # Sigma-point statistical linear regression
 % ## Usage
-% * `[A, b, Omega] = slr_sp(mp, Pp, theta, g, R)`
-% * `[A, b, Omega] = slr_sp(mp, Pp, theta, g, R, Xi, wm, wc)`
+% * `[A, b, Omega] = slr_sp(m, P, theta, g, R)`
+% * `[A, b, Omega] = slr_sp(m, P, theta, g, R, Xi, wm, wc)`
 %
 % ## Description
 % Statistical linear regression of the (nonlinear, non-Gaussian) likelihood
@@ -16,8 +16,8 @@ function [A, b, Omega] = slr_sp(mp, Pp, theta, g, R, Xi, wm, wc)
 % Approximation of the moment matching integrals using sigma-points.
 %
 % ## Input
-% * `mp`: Linearization density mean.
-% * `Pp`: Linearization density covariance.
+% * `m`: Linearization density mean.
+% * `P`: Linearization density covariance.
 % * `theta`: dtheta-times-1 vector of other parameters.
 % * `g`: Mean of the likelihood (function handle @(m, P, theta)).
 % * `R`: Covariance of the likelihood (function hanlde @(m, P, theta)).
@@ -69,14 +69,14 @@ function [A, b, Omega] = slr_sp(mp, Pp, theta, g, R, Xi, wm, wc)
     end
 
     %% Linearization
-    dx = size(mp, 1);
-    dy = size(g(mp, theta), 1);
+    dx = size(m, 1);
+    dy = size(g(m, theta), 1);
     I = length(wm);
     Y = zeros(dy, I);
     
     % Generate sigma-points
-    Lp = chol(Pp, 'lower');
-    X = mp*ones(1, I) + Lp*Xi;
+    Lp = chol(P, 'lower');
+    X = m*ones(1, I) + Lp*Xi;
 
     % Calculate expectations w.r.t. linearziation density
     Ey = zeros(dy, 1);              % E{y}
@@ -94,11 +94,11 @@ function [A, b, Omega] = slr_sp(mp, Pp, theta, g, R, Xi, wm, wc)
     % Calculate (co)variances w.r.t. linearization density
     Vy = Ey2 - (Ey*Ey') + EVy_x;    % V{y}
     Vy = (Vy + Vy')/2;
-    Cyx = Eyx - (Ey*mp');           % C{y,x}
+    Cyx = Eyx - (Ey*m');           % C{y,x}
 
     % Calculate linearization w.r.t. linearization density
     % y = A*x + b + nu, nu ~ N(0, Omega)
-    A = Cyx/Pp;
-    b = Ey - A*mp;
-    Omega = Vy - A*Pp*A';
+    A = Cyx/P;
+    b = Ey - A*m;
+    Omega = Vy - A*P*A';
 end

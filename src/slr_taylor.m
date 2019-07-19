@@ -1,8 +1,7 @@
-function [A, b, Omega] = slr_cf(m, P, theta, Ey, Cy, Cyx)
-% # Closed-form statistical linear regression
+function [A, b, Omega] = slr_taylor(m, P, theta, g, Gx, R)
+% # Taylor series expansion statistical linear regression
 % ## Usage
-% * `[A, b, Omega] = slr_sp(m, P, theta, g, R)`
-% * `[A, b, Omega] = slr_sp(m, P, theta, g, R, Xi, wm, wc)`
+% * `[A, b, Omega] = slr_taylor(m, P, theta, g, Gx, R)`
 %
 % ## Description
 % Statistical linear regression of the (nonlinear, non-Gaussian) likelihood
@@ -13,18 +12,19 @@ function [A, b, Omega] = slr_cf(m, P, theta, Ey, Cy, Cyx)
 %
 % with `nu ~ N(0, Omega)`.
 %
-% Uses closed-form expression for the mean and covariances.
+% This implementation uses Taylor-series-based linearization of the
+% nonlinear model (as the EKF).
 %
 % ## Input
 % * `m`: Linearization density mean.
 % * `P`: Linearization density covariance.
 % * `theta`: dtheta-times-1 vector of other parameters.
-% * `Ey`: Closed-form expression of the mean integral (function handle 
-%    `@(m, P, theta)`).
-% * `Cy`: Closed-form expression of the covariance integral (function 
-%   handle `@(m, P, theta)`).
-% * `Cyx`: Closed-form expression of the cross-covariance integral 
-%   (function handle `@(m, P, theta)`).
+% * `g`: Mean of the likelihood E{y[n] | x[n]} (function handle 
+%   `@(x, theta)`).
+% * `Gx`: Jacobian of the mean of the likelihood (function handle 
+%   `@(x, theta)`).
+% * `R`: Covariance of the likelihood Cov{y[n] | x[n]} (function handle
+%   `@(x, theta)`).
 %
 % ## Ouptut
 % * `A`: Slope of the affine approximation.
@@ -32,7 +32,7 @@ function [A, b, Omega] = slr_cf(m, P, theta, Ey, Cy, Cyx)
 % * `Omega`: Residual noise covariance.
 %
 % ## Authors
-% 2019-present -- Roland Hostettler
+% 2018-present -- Roland Hostettler
 
 %{
 % This file is part of the libsmc Matlab toolbox.
@@ -52,14 +52,21 @@ function [A, b, Omega] = slr_cf(m, P, theta, Ey, Cy, Cyx)
 %}
 
 % TODO:
-% * Ey, Cy, Cyx should probably be taken from the 'model' struct in the
-% future.
+% * Take g, Gx, R from model struct
 
     %% Defaults
     narginchk(6, 6);
-
+    
     %% Linearization
-    A = Cyx(m, P, theta)/P;
-    b = Ey(m, P, theta) - A*m;
-    Omega = Cy(m, P, theta) - A*P*A';
+    % Expectations w.r.t. linearization density
+    my = g(m, theta);
+    G = Gx(m, theta);
+    Py = G*P*G' + R(m, theta);
+    Pyx = G*P;
+
+    % Calculate linearization w.r.t. linearization density
+    % y = A*x + b + v, v ~ N(0, Omega)
+    A = Pyx/P;
+    b = my - A*m;
+    Omega = Py - A*P*A';
 end
