@@ -10,7 +10,7 @@
 %
 % with q[n] ~ N(0, 0.3^2).
 %
-% 2018-2019 -- Roland Hostettler <roland.hostettler@aalto.fi>
+% 2019 -- Roland Hostettler
 
 % Housekeeping
 clear variables;
@@ -26,7 +26,7 @@ warning('off', 'all');
 %% Parameters
 % Filter parameters
 J = 100;         % Number of particles
-L = 5;          % Number of iterations
+L = 5;           % Number of iterations
 
 % Sigma-points: Assigns weight 1/2 to the central point, same weights for
 % mean and covariance
@@ -80,8 +80,9 @@ end
 dx = size(m0, 1);
 [wm, wc, c] = ut_weights(dx, alpha, beta, kappa);
 Xi = ut_sigmas(zeros(dx, 1), eye(dx), c);
+slr_sp = @(mp, Pp, theta) slr_sp(mp, Pp, theta, g, R, Xi, wm, wc);
 par_sp = struct( ...
-    'sample', @(model, y, x, theta) sample_gaussian_sp(model, y, x, theta, f, @(x, theta) Q, g, R, L, Xi, wm, wc), ...
+    'sample', @(model, y, x, theta) sample_gaussian(model, y, x, theta, f, @(x, theta) Q, slr_sp, L), ...
     'calculate_incremental_wights', @calculate_incremental_weights_generic ...
 );
 
@@ -89,8 +90,9 @@ par_sp = struct( ...
 Ey = @(m, P, theta) 10*exp(m + P/2);
 Cy = @(m, P, theta) 100*exp(2*m + P)*(exp(P) - 1) + 10*exp(m + P/2);
 Cyx = @(m, P, theta) 10*P*exp(m + P/2);
+slr_cf = @(mp, Pp, theta) slr_cf(mp, Pp, theta, Ey, Cy, Cyx);
 par_cf = struct( ...
-    'sample', @(model, y, x, theta) sample_gaussian_cf(model, y, x, theta, f, @(x, theta) Q, Ey, Cy, Cyx, L), ...
+    'sample', @(model, y, x, theta) sample_gaussian(model, y, x, theta, f, @(x, theta) Q, slr_cf, L), ...
     'calculate_incremental_weights', @calculate_incremental_weights_generic ...
 );
 
