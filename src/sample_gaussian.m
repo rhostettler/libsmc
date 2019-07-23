@@ -1,8 +1,8 @@
-function [xp, q] = sample_gaussian(model, y, x, theta, f, Q, slr, L, kappa)
+function [xp, q] = sample_gaussian(model, y, x, theta, f, Q, slr, L, kappa, epsilon)
 % # Gaussian approximation to optimal importance density
 % ## Usage
 % * `[xp, q] = sample_gaussian(model, y, x, theta, f, Q, slr)`
-% * `[xp, q] = sample_gaussian(model, y, x, theta, f, Q, slr, L, gamma)`
+% * `[xp, q] = sample_gaussian(model, y, x, theta, f, Q, slr, L, kappa, epsilon)`
 %
 % ## Description
 % Calculates the Gaussian approximation of the joint distribution
@@ -48,7 +48,8 @@ function [xp, q] = sample_gaussian(model, y, x, theta, f, Q, slr, L, kappa)
 % * `slr`: Function to perform the statistical linear regression, e.g.
 %   `slr_cf` or `slr_sp` (function handle `@(mp, Pp, theta)`.
 % * `L`: Number of iterations (default: `1`).
-% * `kappa`: Tail probability for gating (default: `1`)
+% * `kappa`: Tail probability for gating (default: `1`).
+% * `epsilon`: Threshold for KL-convergence criterion (default: `1e-2`).
 %
 % ## Output
 % * `xp`: New samples.
@@ -80,7 +81,7 @@ function [xp, q] = sample_gaussian(model, y, x, theta, f, Q, slr, L, kappa)
 %}
 
     %% Defaults
-    narginchk(7, 9);
+    narginchk(7, 10);
     [dx, J] = size(x);
     dy = size(y, 1);
     if nargin < 8 || isempty(L)
@@ -90,12 +91,16 @@ function [xp, q] = sample_gaussian(model, y, x, theta, f, Q, slr, L, kappa)
         kappa = 1;
     end
     gamma = chi2inv(kappa, dy);
+    if nargin < 10 || isempty(epsilon)
+        epsilon = 1e-2;
+    end
 
     %% Sample and calculate incremental weights
     % Preallocate
     xp = zeros(dx, J);
-    qj = struct('fast', false, 'rand', @(y, x, theta) [], 'logpdf', @(xp, y, x, theta) [], 'mp', [], 'Pp', []);
+    qj = struct('fast', false, 'rand', @(y, x, theta) [], 'logpdf', @(xp, y, x, theta) [], 'mp', [], 'Pp', [], 'dkl', []);
     q = repmat(qj, [1, J]);
+    dkls = zeros(1, L);
     mps = zeros(dx, L+1);
     Pps = zeros(dx, dx, L+1);
     
@@ -115,6 +120,9 @@ function [xp, q] = sample_gaussian(model, y, x, theta, f, Q, slr, L, kappa)
         l = 0;
         done = false;
         while ~done
+            % Update iteration counter
+            l = l + 1;
+                        
             % Calculate linearization w.r.t. linearization density
             % y = A*x + b + nu, nu ~ N(0, Omega)
             [A, b, Omega] = slr(mp, Pp, theta);
@@ -138,18 +146,21 @@ function [xp, q] = sample_gaussian(model, y, x, theta, f, Q, slr, L, kappa)
                 done = true;
                 warning('libsmc:warning', 'Posterior approximation failed (l = %d), sampling from prior.', l);
             else
-                done = false;
+                % Change in KL divergence
+                dkls(l) = (trace(Pt\Pp) - log(det(Pp)) + log(det(Pt)) - dx + (mt - mp)'/Pt*(mt - mp))/2;
+%                 done = false;
+                done = dkls(l) < epsilon;
+                
                 mp = mt;
                 Pp = Pt;
                 Lp = Lt;
             end
             
             % Store current linearization
-            mps(:, l+2) = mp;
-            Pps(:, :, l+2) = Pp;
+            mps(:, l+1) = mp;
+            Pps(:, :, l+1) = Pp;
             
             % Convergence criteria and tests
-            l = l + 1;
             done = (l >= L) || done;
         end
         
@@ -158,8 +169,9 @@ function [xp, q] = sample_gaussian(model, y, x, theta, f, Q, slr, L, kappa)
             'fast', false, ...
             'rand', @(y, x, theta) mp + Lp*randn(dx, 1), ...
             'logpdf', @(xp, y, x, theta) logmvnpdf(xp.', mp.', Pp).', ...
-            'mp', mps, ... % TODO: Adding mps and Pps is inconsistent with respect to the pdf struct, but we'll keep it for now.
-            'Pp', Pps ...
+            'mp', mps, ... % TODO: Adding mps, Pps, dkls is inconsistent with respect to the pdf struct, but we'll keep it for now.
+            'Pp', Pps, ...
+            'dkl', dkls ...
         );
         xp(:, j) = qj.rand(y, x(:, j), theta);
         q(j) = qj;
