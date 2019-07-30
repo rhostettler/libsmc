@@ -98,7 +98,7 @@ function [xp, q] = sample_gaussian(model, y, x, theta, f, Q, slr, L, kappa, epsi
     %% Sample and calculate incremental weights
     % Preallocate
     xp = zeros(dx, J);
-    qj = struct('fast', false, 'rand', @(y, x, theta) [], 'logpdf', @(xp, y, x, theta) [], 'mp', [], 'Pp', [], 'dkl', []);
+    qj = struct('fast', false, 'rand', @(y, x, theta) [], 'logpdf', @(xp, y, x, theta) [], 'mp', [], 'Pp', [], 'dkl', [], 'l', []);
     q = repmat(qj, [1, J]);
     dkls = zeros(1, L);
     mps = zeros(dx, L+1);
@@ -171,7 +171,8 @@ function [xp, q] = sample_gaussian(model, y, x, theta, f, Q, slr, L, kappa, epsi
             'logpdf', @(xp, y, x, theta) logmvnpdf(xp.', mp.', Pp).', ...
             'mp', mps, ... % TODO: Adding mps, Pps, dkls is inconsistent with respect to the pdf struct, but we'll keep it for now.
             'Pp', Pps, ...
-            'dkl', dkls ...
+            'dkl', dkls, ...
+            'l', l ...
         );
         xp(:, j) = qj.rand(y, x(:, j), theta);
         q(j) = qj;
