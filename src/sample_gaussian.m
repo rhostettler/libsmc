@@ -87,7 +87,7 @@ function [xp, q] = sample_gaussian(model, y, x, theta, f, Q, slr, L, kappa, epsi
     if nargin < 8 || isempty(L)
         L = 1;
     end
-    if nargin < 9 || isemtpy(kappa)
+    if nargin < 9 || isempty(kappa)
         kappa = 1;
     end
     gamma = chi2inv(kappa, dy);
@@ -106,7 +106,7 @@ function [xp, q] = sample_gaussian(model, y, x, theta, f, Q, slr, L, kappa, epsi
     
     % For all particles...
     for j = 1:J
-        %% Calculate proposal    
+        %% Calculate proposal
         % Initialize
         mx = f(x(:, j), theta);
         Px = Q(x(:, j), theta);
@@ -148,7 +148,6 @@ function [xp, q] = sample_gaussian(model, y, x, theta, f, Q, slr, L, kappa, epsi
             else
                 % Change in KL divergence
                 dkls(l) = (trace(Pt\Pp) - log(det(Pp)) + log(det(Pt)) - dx + (mt - mp)'/Pt*(mt - mp))/2;
-%                 done = false;
                 done = dkls(l) < epsilon;
                 
                 mp = mt;
