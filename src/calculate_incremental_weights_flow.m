@@ -1,17 +1,29 @@
 function lv = calculate_incremental_weights_flow(model, y, xp, x, theta, q)
-% # 
+% # Incremental weights for Gaussian particle flow OID approximation
 % ## Usage
-% * 
+% * `lv = calculate_incremental_weights_flow(model, y, xp, x, theta, q)`
 %
 % ## Description
-% 
+% Calculates the incremental particle weights when using the Gaussian
+% particle flow OID approximation [1].
 %
 % ## Input
-% * 
+% * `model`: State-space model struct.
+% * `y`: dy-times-1 measurement vector y[n].
+% * `xp`: dx-times-J matrix of newly drawn particles for the state x[n].
+% * `x`: dx-times-J matrix of previous state particles x[n-1].
+% * `theta`: Additional parameters.
+% * `q`: Importance density struct.
 %
-% ## Outut
-% * 
+% ## Output
+% * `lv`: Logarithm of incremental weights.
 %
+% ## References
+% 1. P. Bunch and S. J. Godsill, "Approximations of the optimal importance 
+%    density using Gaussian particle flow importance sampling," Journal of 
+%    the American Statistical Association, vol. 111, no. 514, pp. 748–762, 
+%    2016.
+% 
 % ## Authors
 % 2019-present -- Roland Hostettler
 
@@ -33,11 +45,10 @@ function lv = calculate_incremental_weights_flow(model, y, xp, x, theta, q)
 %}
 
 % TODO:
-% * Consider renaming it to a dummy such that it can be used with others
-%   (e.g., sample_gaussian() could use this as well for improved
-%   efficiency)
-% * In this case, we could actually integrate it into _generic and make
-%   that one more 
+% * This is a dummy function right now, and we should properly integrate it
+%   into the calculate_incremental_weigths_generic function (see remarks in
+%   pf). It might also require rewriting the flow weight calculation
+%   slightly (in sample_gaussian_flow()).
 
     narginchk(6, 6);
     lv = q;

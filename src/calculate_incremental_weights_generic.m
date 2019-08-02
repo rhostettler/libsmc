@@ -16,7 +16,7 @@ function lv = calculate_incremental_weights_generic(model, y, xp, x, theta, q)
 % * `q`: Importance density struct.
 %
 % ## Output
-% * `lv`: Logarithm ov incremental weights.
+% * `lv`: Logarithm of incremental weights.
 %
 % ## See also
 % sample_generic

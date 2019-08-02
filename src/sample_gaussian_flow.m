@@ -1,32 +1,58 @@
 function [xp, q] = sample_gaussian_flow(model, y, x, theta, f, Q, g, Gx, dGxdx, R, L)
-% # Gaussian flow OID approximation sampling
+% # Gaussian particle flow OID approximation sampling
 % ## Usage
-% * 
+% * `[xp, q] = sample_gaussian_flow(model, y, x, theta, f, Q, g, Gx, dGxdx, R)`
+% * `[xp, q] = sample_gaussian_flow(model, y, x, theta, f, Q, g, Gx, dGxdx, R, L)`
 %
 % ## Description
-% 
+% Gaussian particle flow importance sampling according to [1]. Approximates
+% the optimal importance density (OID) using a (deterministic or 
+% stochastic) Gaussian flow by first sampling from the prior (bootstrap)
+% and then propagating the particles and their weights according to the
+% Gaussian flow.
 %
-% A few simplifications from the original article:
-% * For simplicity, we use a fixed step size for integration, parameter L
-% * The stochastic flow is not implemented yet (gamma = 0)
+% Notes:
+% * For simplicity, a fixed step size is used, that is, integration is 
+%   split into `L` fixed-length intervals.
+% * Stochastic flow is not implemented yet.
 %
 % ## Input
-% 
+% * `model`: State-space model struct.
+% * `y`: dy-times-1 measurement vector y[n].
+% * `x`: dx-times-J matrix of particles for the state x[n-1].
+% * `theta`: dtheta-times-1 vector of other parameters.
+% * `f`: Mean of the dynamic model E{x[n] | x[n-1]} (function handle 
+%   `@(x, theta)`).
+% * `Q`: Covariance of the dynamic model Cov{x[n] | x[n-1]} (function
+%   handle `@(x, theta)`).
+% * `g`: Mean of the likelihood E{y[n] | x[n]} (function handle 
+%   `@(x, theta)`).
+% * `Gx`: Jacobian of the mean of the likelihood (function handle 
+%   `@(x, theta)`).
 % * `dGxdx`: 1-times-dx cell array of dy-times-dx matrices of second 
 %   derivatives where the nth cell is
+%
 %                  _                                       _ 
 %                 | d^2 g_1/dx_n dx_1 d^2 g_1/dx_n dx_2 ... |
 %                 | d^2 g_2/dx_n dx_1 d^2 g_2/dx_n dx_2 ... |
 %     dGxdx{n} =  | ...                                     |
 %                 |_                                       _|
-% * `R`: 
-% * `L`: 
+%
+%   (function handle `@(x, theta)`).
+% * `R`: Covariance of the likelihood Cov{y[n] | x[n]} (function handle
+%   `@(x, theta)`).
+% * `L`: Number of integration steps to use (default: `5`).
 % 
-% ## Outut
-% * 
+% ## Output
+% * `xp`: New samples.
+% * `q`: Array of structs where the jth entry corresponds to the importance
+%   density of the jth particle.
 %
 % ## References
-% 1. 
+% 1. P. Bunch and S. J. Godsill, "Approximations of the optimal importance 
+%    density using Gaussian particle flow importance sampling," Journal of 
+%    the American Statistical Association, vol. 111, no. 514, pp. 748–762, 
+%    2016.
 % 
 % ## Authors
 % 2019-present -- Roland Hostettler
@@ -49,28 +75,22 @@ function [xp, q] = sample_gaussian_flow(model, y, x, theta, f, Q, g, Gx, dGxdx, 
 %}
 
 % TODO:
-% * Add documentation
-% * Add possibilities for stochastic flow (and make deterministic flow
-%   default)
+% * Add stochastic flow (with deterministic flow as default)
 
     %% Defaults
     narginchk(10, 11);
     if nargin < 11 || isempty(L)
         L = 5;
     end
+    lambda = 1/L;   % Integration step size
+    gamma = 0;      % Deterministic flow
     
     %% Gaussian flow
     % Initialize the log weights
     [dx, J] = size(x);
     xp = zeros(dx, J);
-    lv = zeros(1, J); %log(1/J)*ones(1, J);
-    
-    % Step size assumed fixed for now
-    lambda = 1/L;
-    
-    % Fixed for deterministic flow
-    gamma = 0;
-    depsilon = zeros(dx, 1);
+    lv = zeros(1, J);    
+    depsilon = zeros(dx, 1);    % Stochastic increments; zero for deterministic flows
     
     for j = 1:J
         % Sample from prior
@@ -81,8 +101,7 @@ function [xp, q] = sample_gaussian_flow(model, y, x, theta, f, Q, g, Gx, dGxdx, 
         lvp = model.px.logpdf(xp(:, j), x(:, j), theta);
         lv(:, j) = lvp;
     
-        % TODO: We split the interval (0,1] into L equidistant points for
-        % now
+        % Integrate using L intervals
         for l = 1:L
             % Linearize observation function using (17)
             Gxj = Gx(xp(:, j), theta);            
@@ -94,10 +113,9 @@ function [xp, q] = sample_gaussian_flow(model, y, x, theta, f, Q, g, Gx, dGxdx, 
             % form)
             S = Rj/lambda + Gxj*Pp*Gxj';
             K = Pp*Gxj'/S;
-            ml = mp + K*(yj - Gxj*mp);  % "mhat lambda"
+            ml = mp + K*(yj - Gxj*mp);   % "mhat lambda"
             Pl = Pp - K*S*K';            % "Phat lambda"
             Pl = (Pl + Pl')/2;
-            
             PlinvPp = Pl/Pp;
             sqrtPlinvPp = sqrtm(PlinvPp);
             
@@ -111,7 +129,7 @@ function [xp, q] = sample_gaussian_flow(model, y, x, theta, f, Q, g, Gx, dGxdx, 
                 
                 % Columns of the first term
                 dmldxn(:, n) = lambda*Pl*( ...
-                    dGxdxn/Rj*(yj - Gxj*ml) + Gxj'/Rj*dGxdxn*(xp(:, j) - ml) ...
+                    dGxdxn'/Rj*(yj - Gxj*ml) + Gxj'/Rj*dGxdxn*(xp(:, j) - ml) ...
                 );
             
                 % Columns of the second term
