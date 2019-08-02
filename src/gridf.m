@@ -62,8 +62,8 @@ function [xhat, w] = gridf(model, y, theta, x)
     if std(diff(x)) > 1e-9
         error('Grid must be equispaced.');
     end
-    if ~model.px.fast || ~model.py.fast
-        error('px and py must be fast-evaluatable.');
+    if ~model.px.fast
+        error('px must be fast-evaluatable.');
     end
     
     %% Expand inputs
@@ -118,6 +118,13 @@ end
 function lw = grid_update(model, y, x, lwp, theta)
     J = size(x, 2);
     deltax = x(2)-x(1);
-    lpy = model.py.logpdf(y*ones(1, J), x, theta);
+    if model.py.fast
+        lpy = model.py.logpdf(y*ones(1, J), x, theta);
+    else
+        lpy = zeros(1, J);
+        for j = 1:J
+            lpy(j) = model.py.logpdf(y, x(:, j), theta);
+        end
+    end
     lw = lpy + lwp - log(deltax*sum(exp(lpy + lwp)));
 end

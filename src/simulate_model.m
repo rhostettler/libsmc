@@ -55,7 +55,7 @@ function [xs, ys] = simulate_model(model, theta, N)
     %% Generate data
     % Initialize
     x = model.px0.rand(1);
-    y = model.py.rand(x, theta(1)); % Generate a dummy measurement to peek at the dimension dy
+    y = model.py.rand(x, theta(:, 1)); % Generate a dummy measurement to peek at the dimension dy
 
     % Preallocate
     dx = size(x, 1);
@@ -65,8 +65,8 @@ function [xs, ys] = simulate_model(model, theta, N)
     
     % Generate data
     for n = 1:N
-        x = model.px.rand(x, theta(n));
-        y = model.py.rand(x, theta(n));
+        x = model.px.rand(x, theta(:, n));
+        y = model.py.rand(x, theta(:, n));
         xs(:, n) = x;
         ys(:, n) = y;
     end

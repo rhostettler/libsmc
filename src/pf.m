@@ -74,6 +74,14 @@ function [xhat, sys] = pf(model, y, theta, J, par)
 %   resampling-function should return the (log-)weights used for resampling
 %   and calculate_incremental_weights should take these weights as an
 %   input.
+% * The interface for the sample() function should be updated such that it
+%   returns the log-pdf of the samples, i.e., [xp, lqx, qstate] = sample(),
+%   which is then taken as an extra input to
+%   calculate_incremental_weights(). (The same type of interface should be
+%   made for resample() to address the above comment).
+% * Default to calculate_incremental_weights_generic() rather than
+%   bootstrap? Seems to be the more common case nowadays.
+% * Remove unnecessary incremental weight calculation functions
 
     %% Defaults
     narginchk(2, 5);
@@ -108,10 +116,11 @@ function [xhat, sys] = pf(model, y, theta, J, par)
     % Expand 'theta' to the appropriate size, such that we can use
     % 'theta(n)' as an argument to the different functions (if not already
     % expanded).
-    if size(theta, 2) == 1
+    [dtheta, Ntheta] = size(theta);
+    if Ntheta == 1
         theta = theta*ones(1, N);
     end
-    theta = [NaN, theta];
+    theta = [NaN*ones(dtheta, 1), theta];
     
     %% Preallocate
     dx = size(x, 1);
@@ -132,10 +141,10 @@ function [xhat, sys] = pf(model, y, theta, J, par)
         %% Update
         % (Re-)Sample
         [alpha, lw, rstate] = par.resample(lw);
-        [xp, q] = par.sample(model, y(:, n), x(:, alpha), theta(n));
+        [xp, q] = par.sample(model, y(:, n), x(:, alpha), theta(:, n));
         
         % Calculate and normalize weights
-        lv = par.calculate_incremental_weights(model, y(:, n), xp, x(:, alpha), theta(n), q);
+        lv = par.calculate_incremental_weights(model, y(:, n), xp, x(:, alpha), theta(:, n), q);
         lw = lw+lv;
         lw = lw-max(lw);
         w = exp(lw);
