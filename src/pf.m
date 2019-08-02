@@ -151,6 +151,9 @@ function [xhat, sys] = pf(model, y, theta, J, par)
         w = w/sum(w);
         lw = log(w);
         x = xp;
+        if any(~isfinite(w))
+            warning('libsmc:warning', 'NaN/Inf in particle weights.');
+        end
         
         %% Point Estimate(s)
         % Note: We don't have a state estimate for the initial state (in
