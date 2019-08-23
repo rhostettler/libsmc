@@ -95,6 +95,15 @@ function [xs, thetas, sys] = gibbs_pmcmc(model, y, theta0, lambda, K, par)
 %   generic set of parameters. Now we only have to concatenate these
 %   properly; but make sure to mention how these are concatenated in the
 %   documentation.
+%   Also note that this method should be agnostic to the 'lambda', i.e., 
+%   they should not be part of the interface. Instead, one should pass
+%   these to cpfas() directly, e.g. through concatenation or similar. This
+%   should be fairly straight forward to implement in practice but might
+%   break a lot of things. **SHOULD BE SORTED OUT ASAP** (i.e., when
+%   rewriting the GP-PMCMC things. Also requires rewriting
+%   example_cpfas_rs_sv.m).
+% * Interface to sample_states should be something like (model, y, xt,
+%   theta) only. Also requires rewriting example_cpfas_rs_ungm.
 % * Update interface of sample_parameters
 
     %% Defaults
