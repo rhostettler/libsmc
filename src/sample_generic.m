@@ -1,7 +1,8 @@
-function [xp, q] = sample_generic(model, y, x, theta, q)
+function [xp, lqx, qstate] = sample_generic(model, y, x, theta, q)
 % # Sample from an arbitrary importance density
 % ## Usage
-% * `xp = sample_generic(model, y, x, theta, q)`
+% * `[xp, lqx] = sample_generic(model, y, x, theta, q)`
+% * `[xp, lqx, qstate] = sample_generic(model, y, x, theta, q)`
 %
 % ## Description
 % Samples a set of new particles x[n] from the importance distribution 
@@ -16,7 +17,9 @@ function [xp, q] = sample_generic(model, y, x, theta, q)
 %
 % ## Output
 % * `xp`: The new samples x[n].
-% * `q`: Importance density sampled from.
+% * `lqx`: 1-times-J vector of the importance density evaluated at 
+%   `xp(:, j)`.
+% * `qstate`: Empty.
 %
 % ## See also
 % calculate_incremental_weights_generic
@@ -43,12 +46,16 @@ function [xp, q] = sample_generic(model, y, x, theta, q)
 
     narginchk(5, 5);
     [dx, J] = size(x);
+    qstate = [];
     if q.fast
         xp = q.rand(y*ones(1, J), x, theta);
+        lqx = q.logpdf(xp, y*ones(1, J), x, theta);
     else
         xp = zeros(dx, J);
+        lqx = zeros(1, J);
         for j = 1:J
             xp(:, j) = q.rand(y, x(:, j), theta);
+            lqx(j) = q.logpdf(xp(:, j), y, x(:, j), theta);
         end
     end
 end

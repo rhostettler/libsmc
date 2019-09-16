@@ -1,4 +1,4 @@
-function lv = calculate_incremental_weights_flow(model, y, xp, x, theta, q)
+function lv = calculate_incremental_weights_flow(model, y, xp, x, theta, lqx)
 % # Incremental weights for Gaussian particle flow OID approximation
 % ## Usage
 % * `lv = calculate_incremental_weights_flow(model, y, xp, x, theta, q)`
@@ -51,5 +51,5 @@ function lv = calculate_incremental_weights_flow(model, y, xp, x, theta, q)
 %   slightly (in sample_gaussian_flow()).
 
     narginchk(6, 6);
-    lv = q;
+    lv = lqx;
 end

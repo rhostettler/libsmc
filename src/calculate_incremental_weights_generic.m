@@ -1,7 +1,7 @@
-function lv = calculate_incremental_weights_generic(model, y, xp, x, theta, q)
+function lv = calculate_incremental_weights_generic(model, y, xp, x, theta, lqx)
 % # General incremental weights for sequential importance sampling
 % ## Usage
-% * `lv = calculate_incremental_weights_generic(model, y, xp, x, theta, q)`
+% * `lv = calculate_incremental_weights_generic(model, y, xp, x, theta, lqx)`
 %
 % ## Description
 % Calculates the incremental importance weight for sequential importance
@@ -13,7 +13,8 @@ function lv = calculate_incremental_weights_generic(model, y, xp, x, theta, q)
 % * `xp`: dx-times-J matrix of newly drawn particles for the state x[n].
 % * `x`: dx-times-J matrix of previous state particles x[n-1].
 % * `theta`: Additional parameters.
-% * `q`: Importance density struct.
+% * `lqx`: 1-times-J vector of importance density evaluations at 
+%   `xp(:, j)`.
 %
 % ## Output
 % * `lv`: Logarithm of incremental weights.
@@ -41,35 +42,23 @@ function lv = calculate_incremental_weights_generic(model, y, xp, x, theta, q)
 % with libsmc. If not, see <http://www.gnu.org/licenses/>.
 %}
 
-% TODO:
-% * Consider simply expanding q if it's a scalar; check computational
-%   drawback.
-
     narginchk(6, 6);
     J = size(xp, 2);
     lv = zeros(1, J);
     px = model.px;
     py = model.py;
-    if px.fast && py.fast && length(q) == 1 && q.fast
+    if px.fast && py.fast
         lv = ( ...
             py.logpdf(y*ones(1, J), xp, theta) ...
             + px.logpdf(xp, x, theta) ...
-            - q.logpdf(xp, y*ones(1, J), x, theta) ...
+            - lqx ...
         );
-    elseif length(q) == J
-        for j = 1:J
-            lv(j) = ( ...
-                py.logpdf(y, xp(:, j), theta) ...
-                + px.logpdf(xp(:, j), x(:, j), theta) ...
-                - q(j).logpdf(xp(:, j), y, x(:, j), theta) ...
-            );
-        end
     else
         for j = 1:J
             lv(j) = ( ...
                 py.logpdf(y, xp(:, j), theta) ...
                 + px.logpdf(xp(:, j), x(:, j), theta) ...
-                - q.logpdf(xp(:, j), y, x(:, j), theta) ...
+                - lqx(j) ...
             );
         end
     end

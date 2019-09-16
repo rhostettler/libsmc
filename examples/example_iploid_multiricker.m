@@ -26,9 +26,6 @@
 
 % TODO:
 % * Extend to different carrying capacities and process noises
-% * check iterations, how many are required for high dimensions?
-% * Store more precise statistics of l (iteration numbers)
-% * Analyze why ICE fails when we sub-sample.
 
 % Housekeeping
 clear variables;
@@ -46,8 +43,8 @@ L = 10;                     % Max. number of iterations
 epsilon = 1e-3;             % Convergence threshold
 
 % Simulation parameters
-N = 20;                    % Number of time samples
-K = 10;                     % Number of MC simulations
+N = 100;                    % Number of time samples
+K = 100;                    % Number of MC simulations
 
 % Model parameters
 dx = 10;                    % No. of patches; equals state dimension
@@ -73,7 +70,10 @@ use_sp = false;             % Sigma-point ICE OID approximation
 
 % Other switches
 plots = true;               % Show plots?
-store = false;              % Save the simulation?
+store = true;              % Save the simulation?
+
+% 
+kappa = 0.95;               % Gating tail probability
 
 % Sigma-points (for sigma-point moment approximation): Assigns weight 1/2 
 % to the central point, same weights for mean and covariance
@@ -147,7 +147,7 @@ model = struct('px0', px0, 'px', px, 'py', py);
 % One-step OID approximation, closed-form moments
 slr_cf = @(m, P, theta) slr_cf(m, P, theta, Ey, Cy, Cyx);
 par_cf1 = struct( ...
-    'sample', @(model, y, x, theta) sample_gaussian(model, y(theta == 1, :), x, theta, f, Q, slr_cf), ...
+    'sample', @(model, y, x, theta) sample_gaussian(model, y(theta == 1, :), x, theta, f, Q, slr_cf, 1, kappa), ...
     'calculate_incremental_weights', @calculate_incremental_weights_generic ...
 );
 
@@ -159,14 +159,14 @@ par_gf = struct( ...
 
 % ICE OID approximation, closed-form moments
 par_cf = struct( ...
-    'sample', @(model, y, x, theta) sample_gaussian(model, y(theta == 1, :), x, theta, f, Q, slr_cf, L, [], epsilon), ...
+    'sample', @(model, y, x, theta) sample_gaussian(model, y(theta == 1, :), x, theta, f, Q, slr_cf, L, kappa, epsilon), ...
     'calculate_incremental_weights', @calculate_incremental_weights_generic ...
 );
 
 % ICE OID approximation, Taylor series moment approximation
 slr_lin = @(m, P, theta) slr_taylor(m, P, theta, g, Gx, R);
 par_lin = struct( ...
-    'sample', @(model, y, x, theta) sample_gaussian(model, y(theta == 1, :), x, theta, f, Q, slr_lin, L, [], epsilon), ...
+    'sample', @(model, y, x, theta) sample_gaussian(model, y(theta == 1, :), x, theta, f, Q, slr_lin, L, kappa, epsilon), ...
     'calculate_incremental_weights', @calculate_incremental_weights_generic ...
 );
 
@@ -176,7 +176,7 @@ dx = size(m0, 1);
 Xi = ut_sigmas(zeros(dx, 1), eye(dx), c);
 slr_sp = @(m, P, theta) slr_sp(m, P, theta, g, R, Xi, wm, wc);
 par_sp = struct( ...
-    'sample', @(model, y, x, theta) sample_gaussian(model, y(theta == 1, :), x, theta, f, Q, slr_sp, L, [], epsilon), ...
+    'sample', @(model, y, x, theta) sample_gaussian(model, y(theta == 1, :), x, theta, f, Q, slr_sp, L, kappa, epsilon), ...
     'calculate_incremental_weights', @calculate_incremental_weights_generic ...
 );
 
@@ -228,7 +228,7 @@ fprintf('Simulating with J = %d, L = %d, N = %d, K = %d...\n', J, L, N, K);
 fh = pbar(K);
 for k = 1:K
     %% Simulation
-    theta = rand([dx, N]) > 0.5;    % Randomly generate measurement instants
+    theta = rand([dx, N]) < 0.5;    % Randomly generate measurement instants
 %     theta = ones(dx, 1);
     [xs(:, :, k), ys(:, :, k)] = simulate_model(model, theta, N);
     
@@ -334,25 +334,25 @@ fprintf( ...
 fprintf( ...
     'BPF\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\t\tn/a\n', ...
     mean(e_rmse_bpf), std(e_rmse_bpf), mean(t_bpf), std(t_bpf), ...
-    mean(sum(r_bpf(:, :, ~iNaN_bpf))/N), std(sum(r_bpf(:, :, ~iNaN_bpf))/N), ...
+    mean(sum(r_bpf(:, :, ~iNaN_bpf))/N*100), std(sum(r_bpf(:, :, ~iNaN_bpf))/N*100), ...
     1-sum(iNaN_bpf)/K ...
 );
 fprintf( ...
     'CF1\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\t\tn/a\n', ...
     mean(e_rmse_cf1), std(e_rmse_cf1), mean(t_cf1), std(t_cf1), ...
-    mean(sum(r_cf1(:, :, ~iNaN_cf1))/N), std(sum(r_cf(:, :, ~iNaN_cf1))/N), ...
+    mean(sum(r_cf1(:, :, ~iNaN_cf1))/N*100), std(sum(r_cf(:, :, ~iNaN_cf1))/N*100), ...
     1-sum(iNaN_cf1)/K ...
 );
 fprintf( ...
     'GF\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\t\tn/a\n', ...
     mean(e_rmse_gf), std(e_rmse_gf), mean(t_gf), std(t_gf), ...
-    mean(sum(r_gf(:, :, ~iNaN_gf))/N), std(sum(r_gf(:, :, ~iNaN_gf))/N), ...
+    mean(sum(r_gf(:, :, ~iNaN_gf))/N*100), std(sum(r_gf(:, :, ~iNaN_gf))/N*100), ...
     1-sum(iNaN_gf)/K ...
 );
 fprintf( ...
     'CF\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\t\t%.2f (%.2f)\n', ...
     mean(e_rmse_cf), std(e_rmse_cf), mean(t_cf), std(t_cf), ...
-    mean(sum(r_cf(:, :, ~iNaN_cf))/N), std(sum(r_cf(:, :, ~iNaN_cf))/N), ...
+    mean(sum(r_cf(:, :, ~iNaN_cf))/N*100), std(sum(r_cf(:, :, ~iNaN_cf))/N*100), ...
     1-sum(iNaN_cf)/K, mean(l_cf(:)), std(l_cf(:)) ...
 );
 if 0
@@ -400,12 +400,14 @@ if plots
     plot(mean(ess_cf(:, :, ~iNaN_cf), 3));
 %     plot(mean(ess_lin(:, :, ~iNaN_lin), 3));
 %     plot(mean(ess_sp(:, :, ~iNaN_sp), 3));
-    ylim([0, 100]);
+    ylim([10, 1000]);
+    set(gca, 'YScale', 'log');
     legend('BPF', 'OID CF1', 'GF', 'ICE-CF', 'ICE-Taylor', 'ICE-SP');
     title('Effective sample size (absolute)');
     
     figure(5); clf();
-    hist(l_cf(:), 0.5:L);
+    hist(l_cf(:), 1:L);
+    title('Number of iterations');
 
     % Posterior
     j = 12;
@@ -472,13 +474,7 @@ end
 
 %% Store results
 if store
-    
-% % % % % % % %     TODO: Update these.
-    clear sys_bpf sys_cf1 sys_cf
-    
-    % Store
-    outfile = sprintf('Savefiles/example_ungm_J=%d_L=%d_K=%d_N=%d.mat', J, L, K, N);
-    
-    outfile = sprintf('Savefiles/example_multiricker_J=%d_L=%d.mat', J, L);
+    clear sys_bpf sys_cf1 sys_gf sys_cf;
+    outfile = sprintf('Savefiles/example_multiricker_J=%d_L=%d_K=%d_N=%d.mat', J, L, K, N);
     save(outfile);
 end

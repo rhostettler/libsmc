@@ -1,8 +1,8 @@
-function [xp, q] = sample_gaussian(model, y, x, theta, f, Q, slr, L, kappa, epsilon)
+function [xp, lqx, qstate] = sample_gaussian(model, y, x, theta, f, Q, slr, L, kappa, epsilon)
 % # Gaussian approximation to optimal importance density
 % ## Usage
-% * `[xp, q] = sample_gaussian(model, y, x, theta, f, Q, slr)`
-% * `[xp, q] = sample_gaussian(model, y, x, theta, f, Q, slr, L, kappa, epsilon)`
+% * `[xp, lqx] = sample_gaussian(model, y, x, theta, f, Q, slr)`
+% * `[xp, lqx, qstate] = sample_gaussian(model, y, x, theta, f, Q, slr, L, kappa, epsilon)`
 %
 % ## Description
 % Calculates the Gaussian approximation of the joint distribution
@@ -53,8 +53,10 @@ function [xp, q] = sample_gaussian(model, y, x, theta, f, Q, slr, L, kappa, epsi
 %
 % ## Output
 % * `xp`: New samples.
-% * `q`: Array of structs where the jth entry corresponds to the importance
-%   density of the jth particle.
+% * `lqx`: 1-times-J vector of the importance density evaluated at 
+%   `xp(:, j)`.
+% * `qstate`: Array of structs where the jth entry corresponds to the 
+%   importance density of the jth particle.
 %
 % ## Authors
 % 2019-present -- Roland Hostettler
@@ -98,8 +100,9 @@ function [xp, q] = sample_gaussian(model, y, x, theta, f, Q, slr, L, kappa, epsi
     %% Sample and calculate incremental weights
     % Preallocate
     xp = zeros(dx, J);
+    lqx = zeros(1, J);
     qj = struct('fast', false, 'rand', @(y, x, theta) [], 'logpdf', @(xp, y, x, theta) [], 'mp', [], 'Pp', [], 'dkl', [], 'l', []);
-    q = repmat(qj, [1, J]);
+    qstate = repmat(qj, [1, J]);
     dkls = zeros(1, L);
     mps = zeros(dx, L+1);
     Pps = zeros(dx, dx, L+1);
@@ -174,6 +177,7 @@ function [xp, q] = sample_gaussian(model, y, x, theta, f, Q, slr, L, kappa, epsi
             'l', l ...
         );
         xp(:, j) = qj.rand(y, x(:, j), theta);
-        q(j) = qj;
+        lqx(:, j) = qj.logpdf(xp(:, j), y, x(:, j), theta);
+        qstate(j) = qj;
     end
 end

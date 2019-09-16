@@ -1,8 +1,8 @@
-function [xp, q] = sample_gaussian_flow(model, y, x, theta, f, Q, g, Gx, dGxdx, R, L)
+function [xp, lqx, qstate] = sample_gaussian_flow(model, y, x, theta, f, Q, g, Gx, dGxdx, R, L)
 % # Gaussian particle flow OID approximation sampling
 % ## Usage
-% * `[xp, q] = sample_gaussian_flow(model, y, x, theta, f, Q, g, Gx, dGxdx, R)`
-% * `[xp, q] = sample_gaussian_flow(model, y, x, theta, f, Q, g, Gx, dGxdx, R, L)`
+% * `[xp, lqx] = sample_gaussian_flow(model, y, x, theta, f, Q, g, Gx, dGxdx, R)`
+% * `[xp, lqx, qstate] = sample_gaussian_flow(model, y, x, theta, f, Q, g, Gx, dGxdx, R, L)`
 %
 % ## Description
 % Gaussian particle flow importance sampling according to [1]. Approximates
@@ -45,8 +45,9 @@ function [xp, q] = sample_gaussian_flow(model, y, x, theta, f, Q, g, Gx, dGxdx, 
 % 
 % ## Output
 % * `xp`: New samples.
-% * `q`: Array of structs where the jth entry corresponds to the importance
-%   density of the jth particle.
+% * `lqx`: 1-times-J vector of importance density evaluations at 
+%   `xp(:, j)`.
+% * `qstate`: Importance density state.
 %
 % ## References
 % 1. P. Bunch and S. J. Godsill, "Approximations of the optimal importance 
@@ -177,5 +178,8 @@ function [xp, q] = sample_gaussian_flow(model, y, x, theta, f, Q, g, Gx, dGxdx, 
     % => Actually, we'll modify the interface of the sample() function to
     % also return the "lqx" along with the samples, and resample will
     % return "lqalpha".
-    q = lv;
+    lqx = lv;
+    
+    % TODO: We also want to put something into qstate
+    qstate = [];
 end

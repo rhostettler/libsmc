@@ -20,6 +20,7 @@
 % * (Dense grid filter)
 % * Bootstrap particle filter
 % * SIR particle filter with one-step Gaussian OID approximation
+% * Gaussian flow OID approximation
 % * SIR particle filter with iterated conditional expectations and
 %   posterior linearization OID approximation
 %
@@ -52,8 +53,8 @@ rng(5011);
 xg = -25:0.5e-2:25;
 
 % Common particle filter parameters
-J = 10000;       % Number of particles; TODO: 10-2000 are ok, need to run 5k and 10k for bpf/one-step
-L = 5;         % Maximum number of iterations (5)
+J = 100;        % Number of particles; 10-10000
+L = 5;          % Maximum number of iterations and GF integration steps (5)
 
 % Sigma-points: Assigns weight 1/2 to the central point, same weights for
 % mean and covariance
@@ -74,22 +75,24 @@ m0 = 0;             % Initial state mean (0)
 P0 = 5;             % Initial state variance (5)
 
 % Algorithms to run
-gridf = false;      % Dense grid filter, very computationally expensive
-bpf = true;         % Bootstrap particle filter
-cf1 = true;         % One-step OID approximation (EKF/UKF-like)
-cf = false;          % Closed form iterated conditional expectations w/ posterior linearization
+use_gridf = false;      % Dense grid filter, very computationally expensive (false)
+use_bpf = true;         % Bootstrap particle filter
+use_cf1 = true;         % One-step OID approximation (EKF/UKF-like)
+use_gf = true;          % Gaussian flow (don't run this for 5e3, 10e3)
+use_cf = true;          % Closed form iterated conditional expectations w/ posterior linearization (don't run this for 5e3, 10e3)
 
 % Other switches
-abc = false;        % If set to true, measurements are noise-free
-uniform = false;    % Use uniform pseudo-likelihood? (Gaussian is used by default)
+abc = false;        % If set to true, measurements are noise-free (false)
+uniform = false;    % Use uniform pseudo-likelihood? (false)
 store = true;       % Save the simulation results (true/false)
-plots = false;      % Show plots
+plots = false;      % Show plots (false)
 
 %% Model
 % Dynamic and measurement function
 f = @(x, n) 0.5*x + 25*x./(1+x.^2) + 8*cos(1.2*n);
 g = @(x, theta) x.^2/20;
 Gx = @(x, theta) 2*x/20;
+dGxdx = @(x, theta)  {1/10};
 
 % Closed-form moments
 Ey = @(m, P, theta) (m^2 + P)/20;
@@ -191,7 +194,7 @@ H_cf = H_bpf;
 
 l_cf = zeros(1, K);
 
-if gridf
+if use_gridf
     NGrid = length(xg);
     w = zeros(N, NGrid, K);
 end
@@ -219,14 +222,14 @@ for k = 1:K
 
     %% Estimation
     % Grid filter
-    if gridf
+    if use_gridf
         tic;
         [xhat_grid(:, :, k), w(:, :, k)] = gridf(model, ys(:, :, k), 1:N, xg);
         t_grid(k) = toc;
     end
     
     % Bootstrap PF
-    if bpf
+    if use_bpf
         tic;
         [xhat_bpf(:, :, k), sys_bpf] = pf(model, ys(:, :, k), theta, J);
         t_bpf(k) = toc;
@@ -236,13 +239,13 @@ for k = 1:K
     end
     
     % Gaussian flow
-if 0
-    tic;
-    [xhat_gf(:, :, k), sys_gf] = pf(model, ys(:, :, k), theta, J, par_gf);
-    t_gf(k) = toc;
-    tmp = cat(2, sys_gf(2:N+1).rstate);
-    ess_gf(:, :, k) = cat(2, tmp.ess);
-end
+    if use_gf
+        tic;
+        [xhat_gf(:, :, k), sys_gf] = pf(model, ys(:, :, k), theta, J, par_gf);
+        t_gf(k) = toc;
+        tmp = cat(2, sys_gf(2:N+1).rstate);
+        ess_gf(:, :, k) = cat(2, tmp.ess);
+    end
     
     % Taylor series
 if 0
@@ -261,7 +264,7 @@ if 0
 end
 
     % One-step OID approximation
-    if cf1
+    if use_cf1
         tic;
         [xhat_cf1(:, :, k), sys_cf1] = pf(model, ys(:, :, k), theta, J, par_cf1);
         t_cf1(k) = toc;
@@ -271,13 +274,13 @@ end
     end
    
     % Closed form, iterated conditional expectations
-    if cf
+    if use_cf
         tic;
         [xhat_cf(:, :, k), sys_cf] = pf(model, ys(:, :, k), theta, J, par_cf);
         t_cf(k) = toc;
         tmp = cat(2, sys_cf(2:N+1).rstate);
         ess_cf(:, :, k) = cat(2, tmp.ess);
-        tmp = cat(1, sys_cf(2:N+1).q);
+        tmp = cat(1, sys_cf(2:N+1).qstate);
         l_cf(k) = mean(cat(1, tmp.l));
     %     H_cf(:, :, k) = estimate_cross_entropy(xg, w(:, :, k), sys_cf(2:N+1));
     end
@@ -316,13 +319,14 @@ fprintf( ...
     1-sum(iNaN_bpf)/K, ...
     mean(mean(ess_bpf)), std(mean(ess_bpf)) ...
 );
-if 0
 fprintf( ...
-    'Flow\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\n', ...
+    'GF\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\t\t%.2f (%.2f)\n', ...
     mean(e_rmse_gf), std(e_rmse_gf), mean(t_gf), std(t_gf), ...
     mean(sum(r_gf(:, :, ~iNaN_gf))/N), std(sum(r_gf(:, :, ~iNaN_gf))/N), ...
-    1-sum(iNaN_gf)/K ...
+    1-sum(iNaN_gf)/K, ...
+    mean(mean(ess_gf)), std(mean(ess_gf)) ...
 );
+if 0
 fprintf( ...
     'LIN\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\n', ...
     mean(e_rmse_lin), std(e_rmse_lin), mean(t_lin), std(t_lin), ...
@@ -381,14 +385,20 @@ waterfall(xg, 1:N, w(:, :, k)); hold on; grid on;
 plot(xs(:, :, k), 1:N, '--r', 'LineWidth', 2);
 
 for n = 1:N
-    x_bpf = sys_bpf(n+1).x;
-    plot3(x_bpf, n*ones(1, J), zeros(1, J), '.');
+    if use_bpf
+        x_bpf = sys_bpf(n+1).x;
+        plot3(x_bpf, n*ones(1, J), zeros(1, J), '.');
+    end
     
-    x_cf1 = sys_cf1(n+1).x;
-    plot3(x_cf1, n*ones(1, J), zeros(1, J), 'o');
-    
-    x_cf = sys_cf(n+1).x;
-    plot3(x_cf, n*ones(1, J), zeros(1, J), '*');
+    if use_cf1
+        x_cf1 = sys_cf1(n+1).x;
+        plot3(x_cf1, n*ones(1, J), zeros(1, J), 'o');
+    end
+
+    if use_cf
+        x_cf = sys_cf(n+1).x;
+        plot3(x_cf, n*ones(1, J), zeros(1, J), '*');
+    end
 end
 
 % Iterate through all posteriors (slightly easier to see the differences
@@ -404,18 +414,58 @@ for n = 1:N
     x_cf1 = sys_cf1(n+1).x;
     plot(x_cf1, 0*ones(1, J), 'o');
 
-    x_cf = sys_cf(n+1).x;
-    plot(x_cf, 0*ones(1, J), 'x');
+    if use_cf
+        x_cf = sys_cf(n+1).x;
+        plot(x_cf, 0*ones(1, J), 'x');
+    end
 
 %     set(gca, 'YScale', 'log');
     legend('Grid', 'True state', 'BPF', 'CF1', 'ICE-CF');
     title(sprintf('Posterior and particles at n = %d', n));
+    
+    %% Plot OID for a particular particle
+    % TODO:
+    % * We need to find an instance where the OID is bi-modal
+    % * Then we need to find two particles on either side of the modes
+    % * Then we need to calculate the OID
+    if use_cf % TODO: replace by cf instead of cf1
+        j = 1;
+        % Get ancestor particle and proposal
+        xnj = sys_cf(n).x(:, sys_cf(n+1).alpha(j));
+        qj = sys_cf(n+1).q(j);
+        
+        
+        lpx = model.px.logpdf(xg, xnj, theta(:, n));
+        px = exp(lpx);
+        
+        lpy = model.py.logpdf(ys(:,  n, k), xg, theta(:, n));
+        py = exp(lpy);
+
+        lp_oid = lpy + lpx;
+        p_oid = exp(lp_oid)/(sum(exp(lp_oid))*mean(diff(xg)));
+        
+        p_cf1 = normpdf(xg, qj.mp(2), sqrt(qj.Pp(:, :, 2)));
+        p_cf = normpdf(xg, qj.mp(qj.l+1), sqrt(qj.Pp(:, :, qj.l+1)));
+
+        figure(4); clf();
+        plot(xg, p_oid); hold on;
+        plot(xg, px, '--');
+%         plot(xg, py, '--');
+        plot(xg, p_cf1, '--');
+        plot(xg, p_cf, '--');
+        plot(xnj, 0, '*');
+        legend('OID', 'px', 'CF1', 'CF');
+
+        title(sprintf('OID approximation for particle %d from %d to %d', j, n-1, n));
+    end
+    
+    %% 
     pause();
 end
 
 if 0
 % Mean ESS
-figure(4); clf();
+figure(5); clf();
 plot(mean(ess_bpf, 3)); hold on; grid on;
 plot(mean(ess_cf1, 3));
 plot(mean(ess_cf, 3));
@@ -428,27 +478,14 @@ end
 % Do this before the plots so that we don't store a bunch of temporary
 % variables that we don't need
 if store
-    % Get the particle system at a particular time n, used for illustration
-    if gridf
-        px_n = w([1, 3], :, k);
-        x_bpf_n = [
-            sys_bpf(1+1).x;
-            sys_bpf(3+1).x;
-        ];
-        x_cf1_n = [
-            sys_cf1(1+1).x;
-            sys_cf1(3+1).x;
-        ];
-        x_cf_n = [
-            sys_cf(1+1).x;
-            sys_cf(3+1).x;
-        ];
+    if ~use_gridf
+        % Remove these from the savefile; they make the file to explode
+        % (but only if we don't simulate with the grid filter, which is
+        % used for illustration purposes)
+        clear sys_bpf sys_cf1 sys_gf sys_cf
     end
-    
-    % Remove these from the savefile; they make the file to explode
-    clear sys_bpf sys_cf1 sys_cf
-    
+        
     % Store
-    outfile = sprintf('Savefiles/example_ungm_J=%d_L=%d_K=%d_N=%d.mat', J, L, K, N);
+    outfile = sprintf('Save/iploid_ungm/example_ungm_J=%d_L=%d_K=%d_N=%d.mat', J, L, K, N);
     save(outfile);
 end
