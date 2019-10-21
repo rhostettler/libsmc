@@ -153,7 +153,7 @@ function [xhat, sys] = pf2(model, y, theta, J, par)
         if return_sys
             sys(n).x = xf(:, :, n);   % Store particles
             sys(n).w = w;             % Store particle weights
-			sys.r(:, n) = rstate;     % Store resampling state
+			sys(n).r = rstate;     % Store resampling state
             sys(n).alpha = alpha;     % Store ancestor indices
         end
     end
