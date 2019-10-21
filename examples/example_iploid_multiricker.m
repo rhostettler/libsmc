@@ -24,9 +24,6 @@
 % with libsmc. If not, see <http://www.gnu.org/licenses/>.
 %}
 
-% TODO:
-% * Extend to different carrying capacities and process noises
-
 % Housekeeping
 clear variables;
 addpath ../src;
@@ -38,42 +35,45 @@ warning('off', 'all');
 xg = -5:1e-3:5;
 
 % Filter parameters
-J = 2000;                   % Number of particles (N.B.: For the iterated variants, J/L particles are used!)
-L = 10;                     % Max. number of iterations
-epsilon = 1e-3;             % Convergence threshold
+J_bpf = 100000;                   % Number of particles
+J_cf1 = J_bpf;%2000;
+J_gf = J_bpf;%100;
+J_cf = J_bpf;%100;
+L = 10;                     % Max. number of iterations (10)
+epsilon = 1e-3;             % Convergence threshold (1e-3)
 
 % Simulation parameters
-N = 100;                    % Number of time samples
-K = 100;                    % Number of MC simulations
+N = 100;                    % Number of time samples (100)
+K = 10;                    % Number of MC simulations (100)
 
 % Model parameters
-dx = 10;                    % No. of patches; equals state dimension
-r = 1;                      % Growth rate
-c = 1;                      % Migration parameter (scaling of distance)
-m = 0.1;                    % Migration rate
-rho = 0.05;                 % Species event probability
-sigma2v = 0.3^2;            % Species process noise variance
-Qu = 1*eye(dx);             % Intra-patch process noise magnitude U(-l, l)
-C = 20;                     % Carrying capacity
+dx = 10;                    % No. of patches; equals state dimension (10)
+r = 1;                      % Growth rate (1)
+c = 1;                      % Migration parameter (scaling of distance) (1)
+m = 0.1;                    % Migration rate (0.1)
+rho = 0.05;                 % Species event probability (0.05)
+sigma2v = 0.3^2;            % Species process noise variance (0.3^2)
+Qu = 1*eye(dx);             % Intra-patch process noise variance (1*eye(dx))
+C = 20;                     % Carrying capacity (20)
 m0 = log(C)*ones(dx, 1);    % Initial mean; somewhere around the carrying capacity
-P0 = 0.1*eye(dx);           % Initial covariance; TODO: Check if we can/should increase it
-beta = 0.5;                 % Likelihood skewness/tail (0 = poisson)
+P0 = 0.1*eye(dx);           % Initial covariance
+beta = 0.5;                 % Likelihood skewness/tail (0 = poisson; 0.5)
 
 % Which filters to run
 use_grid = false;           % Grid filter; run this only when dx = 1
-use_bpf = true;             % Bootstrap PF
+use_bpf = false;             % Bootstrap PF
 use_cf1 = true;             % One-step closed form OID approximation
-use_gf = true;              % Gaussian flow OID approximation
+use_gf = false;              % Gaussian flow OID approximation
 use_cf = true;              % Closed-form ICE OID approximation
 use_lin = false;            % Linearization ICE OID approximation
 use_sp = false;             % Sigma-point ICE OID approximation
 
 % Other switches
-plots = true;               % Show plots?
+plots = false;               % Show plots?
 store = true;              % Save the simulation?
 
-% 
-kappa = 0.95;               % Gating tail probability
+% Other algorithm parameters
+kappa = 0.95;               % Gating tail probability (0.95)
 
 % Sigma-points (for sigma-point moment approximation): Assigns weight 1/2 
 % to the central point, same weights for mean and covariance
@@ -199,9 +199,7 @@ ess_cf = ess_bpf;
 ess_lin = ess_bpf;
 ess_sp = ess_bpf;
 
-l_lin = zeros(N*J/L, K);
-l_sp = l_lin;
-l_cf = l_lin;
+l_cf = zeros(N*J_cf, K);
 
 r_bpf = zeros(1, N, K);
 r_cf1 = r_bpf;
@@ -224,7 +222,7 @@ if use_grid
 end
 
 %% MC simulations
-fprintf('Simulating with J = %d, L = %d, N = %d, K = %d...\n', J, L, N, K);
+fprintf('Simulating with J = %d, L = %d, N = %d, K = %d...\n', J_bpf, L, N, K);
 fh = pbar(K);
 for k = 1:K
     %% Simulation
@@ -242,7 +240,7 @@ for k = 1:K
     % Bootstrap PF
     if use_bpf
         tic;
-        [xhat_bpf(:, :, k), sys_bpf] = pf(model, ys(:, :, k), theta, J);
+        [xhat_bpf(:, :, k), sys_bpf] = pf(model, ys(:, :, k), theta, J_bpf);
         t_bpf(k) = toc;
         tmp = cat(2, sys_bpf(2:N+1).rstate);
         ess_bpf(:, :, k) = cat(2, tmp.ess);
@@ -251,40 +249,52 @@ for k = 1:K
     
     % One-step OID approximation
     if use_cf1
-        tic;
-        [xhat_cf1(:, :, k), sys_cf1] = pf(model, ys(:, :, k), theta, J, par_cf1);
-        t_cf1(k) = toc;
-        tmp = cat(2, sys_cf1(2:N+1).rstate);
-        ess_cf1(:, :, k) = cat(2, tmp.ess);
-        r_cf1(:, :, k) = cat(2, tmp.r);
+        if J_cf1 < 5000
+            tic;
+            [xhat_cf1(:, :, k), sys_cf1] = pf(model, ys(:, :, k), theta, J_cf, par_cf1);
+            t_cf1(k) = toc;
+            tmp = cat(2, sys_cf1(2:N+1).rstate);
+            ess_cf1(:, :, k) = cat(2, tmp.ess);
+            r_cf1(:, :, k) = cat(2, tmp.r);
+        else
+            tic;
+            xhat_cf1(:, :, k) = pf(model, ys(:, :, k), theta, J_cf, par_cf1);
+            t_cf1(k) = toc;
+        end
     end
 
     % Gaussian flow
     if use_gf
         tic;
-        [xhat_gf(:, :, k), sys_gf] = pf(model, ys(:, :, k), theta, J/L, par_gf);
+        [xhat_gf(:, :, k), sys_gf] = pf(model, ys(:, :, k), theta, J_gf, par_gf);
         t_gf(k) = toc;
         tmp = cat(2, sys_gf(2:N+1).rstate);
         ess_gf(:, :, k) = cat(2, tmp.ess);
         r_gf(:, :, k) = cat(2, tmp.r);
     end
-        
+    
     % SLR using closed-form expressions, L iterations
     if use_cf
-        tic;
-        [xhat_cf(:, :, k), sys_cf] = pf(model, ys(:, :, k), theta, J/L, par_cf);
-        t_cf(k) = toc;
-        tmp = cat(2, sys_cf(2:N+1).rstate);
-        ess_cf(:, :, k) = cat(2, tmp.ess);
-        r_cf(:, :, k) = cat(2, tmp.r);
-        tmp = cat(1, sys_cf(2:N+1).q);
-        l_cf(:, k) = cat(1, tmp.l);
+        if J_cf < 5e3
+            tic;
+            [xhat_cf(:, :, k), sys_cf] = pf(model, ys(:, :, k), theta, J_cf, par_cf);
+            t_cf(k) = toc;
+            tmp = cat(2, sys_cf(2:N+1).rstate);
+            ess_cf(:, :, k) = cat(2, tmp.ess);
+            r_cf(:, :, k) = cat(2, tmp.r);
+            tmp = cat(1, sys_cf(2:N+1).qstate);
+            l_cf(:, k) = cat(1, tmp.l);
+        else
+            tic;
+            xhat_cf(:, :, k) = pf(model, ys(:, :, k), theta, J_cf, par_cf);
+            t_cf(k) = toc;
+        end
     end
     
     % Taylor series approximation of SLR
     if use_lin
         tic;
-        [xhat_lin(:, :, k), sys_lin] = pf(model, ys(:, :, k), theta, J/L, par_lin);
+        [xhat_lin(:, :, k), sys_lin] = pf(model, ys(:, :, k), theta, J_bpf/L, par_lin);
         t_lin(k) = toc;
         tmp = cat(2, sys_lin(2:N+1).rstate);
         ess_lin(:, :, k) = cat(2, tmp.ess);
@@ -296,7 +306,7 @@ for k = 1:K
     % SLR using sigma-points, L iterations
     if use_sp
         tic;
-        [xhat_sp(:, :, k), sys_sp] = pf(model, ys(:, :, k), theta, J/L, par_sp);
+        [xhat_sp(:, :, k), sys_sp] = pf(model, ys(:, :, k), theta, J_bpf/L, par_sp);
         t_sp(k) = toc;
         tmp = cat(2, sys_sp(2:N+1).rstate);
         ess_sp(:, :, k) = cat(2, tmp.ess);
@@ -383,10 +393,10 @@ if plots
 
     % ESS
     figure(3); clf();
-    plot(mean(ess_bpf(:, :, ~iNaN_bpf)/J, 3)); hold on; grid on;
-    plot(mean(ess_cf1(:, :, ~iNaN_cf1)/J, 3));
-    plot(mean(ess_gf(:, :, ~iNaN_gf)/(J/L), 3));
-    plot(mean(ess_cf(:, :, ~iNaN_cf)/(J/L), 3));
+    plot(mean(ess_bpf(:, :, ~iNaN_bpf)/J_bpf, 3)); hold on; grid on;
+    plot(mean(ess_cf1(:, :, ~iNaN_cf1)/J_bpf, 3));
+    plot(mean(ess_gf(:, :, ~iNaN_gf)/(J_bpf/L), 3));
+    plot(mean(ess_cf(:, :, ~iNaN_cf)/(J_bpf/L), 3));
 %     plot(mean(ess_lin(:, :, ~iNaN_lin)/(J/L), 3));
 %     plot(mean(ess_sp(:, :, ~iNaN_sp)/(J/L), 3));
     set(gca, 'YScale', 'log');
@@ -425,13 +435,13 @@ if plots
             plot(xg, w(n, :)); hold on; grid on;
             plot(xg, poid);
             if use_bpf
-                plot(sys_bpf(n+1).x, zeros(1, J), '.');
+                plot(sys_bpf(n+1).x, zeros(1, J_bpf), '.');
             end
             if use_sp
-                plot(sys_sp(n+1).x, zeros(1, J/L), 'o');
+                plot(sys_sp(n+1).x, zeros(1, J_bpf/L), 'o');
             end
             if use_cf
-                plot(sys_cf(n+1).x, zeros(1, J/L), 'o');
+                plot(sys_cf(n+1).x, zeros(1, J_bpf/L), 'o');
             end
             legend('Posterior', 'OID', 'Bootstrap', 'ICE-SP');
 
@@ -454,7 +464,7 @@ if plots
     end
     
     % States and measurements (for debugging only)
-if 0
+if 1
     for i = 1:dx
         figure(10+i); clf();
         plot(xs(i, :, k)); hold on;
@@ -475,6 +485,18 @@ end
 %% Store results
 if store
     clear sys_bpf sys_cf1 sys_gf sys_cf;
-    outfile = sprintf('Savefiles/example_multiricker_J=%d_L=%d_K=%d_N=%d.mat', J, L, K, N);
-    save(outfile);
+    outfile = sprintf('Save/example_multiricker2_J=%d_L=%d_K=%d_N=%d.mat', J_bpf, L, K, N);
+%     save(outfile);
+    if use_bpf
+        save(outfile, 'e_rmse_bpf', '-append');
+    end
+    if use_cf1
+        save(outfile, 'e_rmse_cf1', '-append');
+    end
+    if use_gf
+        save(outfile, 'e_rmse_gf', '-append');
+    end
+    if use_cf
+        save(outfile, 'e_rmse_cf', '-append');
+    end
 end
