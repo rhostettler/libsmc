@@ -44,6 +44,7 @@ function [xhat, sys] = pf(model, y, theta, J, par)
 %       density.
 %     - `w`: 1-times-J vector of the particle weights for the marginal
 %       filtering density.
+%      - `xf`: dx-times-J vector of state trajectory samples.
 %     - `alpha`: 1-times-J vector of ancestor indices.
 %     - `rstate`: Resampling algorithm state.
 %
