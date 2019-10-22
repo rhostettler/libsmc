@@ -1,12 +1,24 @@
 function [xhat, sys] = ps(model, y, theta, Jf, Js, par, sys)
-% # Particle smoother
+% # Generic forward-backward particle smoother
 % ## Usage
 % * `xhat, = ps(model, y)`
 % * `[xhat, sys] = ps(model, y, theta, Jf, Js, par, sys)`
 %
 % ## Description
-% Forward filtering backward simulation particle smoother as described in
-% [1].
+% Particle smoothing based on forward-backward smoothing where a
+% traditional filter is run in the forward direction and a refining
+% smoothing pass is run in the backward direction.
+
+% Filtering can either be done outside of the `ps` function itself, for 
+% example, using a custom filtering algorithm. In this case, the `sys`
+% struct returned by the filter has to be passed to `ps`. If no valid
+% `sys` struct is passed, a bootstrap particle filter is used for the
+% forward pass.
+%
+% For smoothing, the forward-filtering, backward-simulation (FFBSi) 
+% smoother is used by default. However, the actual smoothing (backward) run
+% can be customized through the `par.smooth` parameter and arbitrary 
+% smoothing algorithms can be implemented.
 %
 % ## Input
 % * `model`: State-space model struct.
