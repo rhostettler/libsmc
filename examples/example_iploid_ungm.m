@@ -53,7 +53,7 @@ rng(5011);
 xg = -25:0.5e-2:25;
 
 % Common particle filter parameters
-J = 100;        % Number of particles; 10-10000
+J = 100;        % Number of particles; (10, 25, 50, 100, 250, 500, 1000)
 L = 5;          % Maximum number of iterations and GF integration steps (5)
 
 % Sigma-points: Assigns weight 1/2 to the central point, same weights for
@@ -70,26 +70,28 @@ K = 100;            % Number of MC simulations (100)
 % noise covariance (R), which is normally set to 1 (1e-4 makes it much more
 % difficult)
 Q = 10;             % Process noise variance (10)
-R = 1e-4;           % Measurement noise variance (1e-4)
+R = 1e-2;           % Measurement noise variance (1e-4)
 m0 = 0;             % Initial state mean (0)
 P0 = 5;             % Initial state variance (5)
 
 % Algorithms to run
 use_gridf = false;      % Dense grid filter, very computationally expensive (false)
 use_bpf = true;         % Bootstrap particle filter
+use_gf = true;         % Gaussian flow (don't run this for 5e3, 10e3)
+use_pfpf = true;
 use_cf1 = true;         % One-step OID approximation (EKF/UKF-like)
-use_gf = true;          % Gaussian flow (don't run this for 5e3, 10e3)
 use_cf = true;          % Closed form iterated conditional expectations w/ posterior linearization (don't run this for 5e3, 10e3)
 
 % Other switches
 abc = false;        % If set to true, measurements are noise-free (false)
 uniform = false;    % Use uniform pseudo-likelihood? (false)
-store = true;       % Save the simulation results (true/false)
+store = false;       % Save the simulation results (true/false)
 plots = false;      % Show plots (false)
 
 %% Model
 % Dynamic and measurement function
 f = @(x, n) 0.5*x + 25*x./(1+x.^2) + 8*cos(1.2*n);
+Fx = @(x, n) 0.5 + 25./(1+x.^2) - 50*x.^2./(1+x.^2).^2;
 g = @(x, theta) x.^2/20;
 Gx = @(x, theta) 2*x/20;
 dGxdx = @(x, theta)  {1/10};
@@ -104,6 +106,14 @@ theta = 1:N;
 
 % Model struct
 model = model_nonlinear_gaussian(f, Q, g, R, m0, P0, true);
+model.px0.m = m0;
+model.px0.P = P0;
+model.px.m = f;
+model.px.dm = Fx;
+model.px.P = Q;
+model.py.m = g;
+model.py.dm = Gx;
+model.py.P = R;
 if uniform
     epsilon = sqrt(12*R)/2; % To match variance with Gaussian used previously
     model.py = struct( ...
@@ -119,6 +129,12 @@ end
 par_gf = struct( ...
     'sample', @(model, y, x, theta) sample_gaussian_flow(model, y, x, theta, f, @(x, theta) Q, g, Gx, dGxdx, @(x, theta) R, L), ...
     'calculate_incremental_weights', @calculate_incremental_weights_flow ...
+);
+
+% Particle flow particle filter
+par_pfpf = struct( ...
+    'L', 29, ...
+    'ukf', [alpha, beta, kappa] ...
 );
 
 % SLR using Taylor series approximation
@@ -160,6 +176,7 @@ ys = zeros(1, N, K);
 xhat_grid = zeros(1, N, K);
 xhat_bpf = xhat_grid;
 xhat_gf = xhat_grid;
+xhat_pfpf = xhat_grid;
 xhat_lin = xhat_bpf;
 xhat_sp = xhat_bpf;
 xhat_cf1 = xhat_bpf;
@@ -167,6 +184,7 @@ xhat_cf = xhat_bpf;
 
 ess_bpf = zeros(1, N, K);
 ess_gf = ess_bpf;
+ess_pfpf = ess_bpf;
 ess_lin = ess_bpf;
 ess_sp = ess_bpf;
 ess_cf1 = ess_bpf;
@@ -174,6 +192,7 @@ ess_cf = ess_bpf;
 
 r_bpf = zeros(1, N+1, K);
 r_gf = r_bpf;
+r_pfpf = r_bpf;
 r_lin = r_bpf;
 r_sp = r_bpf;
 r_cf1 = r_bpf;
@@ -182,6 +201,7 @@ r_cf = r_bpf;
 t_grid = zeros(1, K);
 t_bpf = t_grid;
 t_gf = t_grid;
+t_pfpf = t_grid;
 t_lin = t_bpf;
 t_sp = t_bpf;
 t_cf1 = t_bpf;
@@ -247,6 +267,16 @@ for k = 1:K
         ess_gf(:, :, k) = cat(2, tmp.ess);
     end
     
+    % PFPF
+    if use_pfpf
+        tic;
+        [xhat_pfpf(:, :, k), sys_pfpf] = pfpf(model, ys(:, :, k), theta, J, par_pfpf);
+        t_pfpf(k) = toc;
+        tmp = cat(2, sys_pfpf(2:N+1).rstate);
+        ess_pfpf(:, :, k) = cat(2, tmp.ess);
+        % TODO: update everything here
+    end
+    
     % Taylor series
 if 0
     tic;
@@ -294,6 +324,7 @@ pbar(0, fh);
 iNaN_grid = squeeze(isnan(xhat_grid(1, N, :)));
 iNaN_bpf = squeeze(isnan(xhat_bpf(1, N, :)));
 iNaN_gf = squeeze(isnan(xhat_gf(1, N, :)));
+iNaN_pfpf = squeeze(isnan(xhat_pfpf(1, N, :)));
 iNaN_lin = squeeze(isnan(xhat_lin(1, N, :)));
 iNaN_sp = squeeze(isnan(xhat_sp(1, N, :)));
 iNaN_cf1 = squeeze(isnan(xhat_cf1(1, N, :)));
@@ -302,6 +333,7 @@ iNaN_cf = squeeze(isnan(xhat_cf(1, N, :)));
 e_rmse_grid = trmse(xhat_grid(:, :, ~iNaN_grid) - xs(:, :, ~iNaN_grid));
 e_rmse_bpf = trmse(xhat_bpf(:, :, ~iNaN_bpf) - xs(:, :, ~iNaN_bpf));
 e_rmse_gf = trmse(xhat_gf(:, :, ~iNaN_gf) - xs(:, :, ~iNaN_gf));
+e_rmse_pfpf = trmse(xhat_pfpf(:, :, ~iNaN_pfpf) - xs(:, :, ~iNaN_pfpf));
 e_rmse_lin = trmse(xhat_lin(:, :, ~iNaN_lin) - xs(:, :, ~iNaN_lin));
 e_rmse_sp = trmse(xhat_sp(:, :, ~iNaN_sp) - xs(:, :, ~iNaN_sp));
 e_rmse_cf1 = trmse(xhat_cf1(:, :, ~iNaN_cf1) - xs(:, :, ~iNaN_cf1));
@@ -325,6 +357,13 @@ fprintf( ...
     mean(sum(r_gf(:, :, ~iNaN_gf))/N), std(sum(r_gf(:, :, ~iNaN_gf))/N), ...
     1-sum(iNaN_gf)/K, ...
     mean(mean(ess_gf)), std(mean(ess_gf)) ...
+);
+fprintf( ...
+    'PFPF\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\t\t%.2f (%.2f)\n', ...
+    mean(e_rmse_pfpf), std(e_rmse_pfpf), mean(t_pfpf), std(t_pfpf), ...
+    mean(sum(r_pfpf(:, :, ~iNaN_pfpf))/N), std(sum(r_pfpf(:, :, ~iNaN_pfpf))/N), ...
+    1-sum(iNaN_pfpf)/K, ...
+    mean(mean(ess_pfpf)), std(mean(ess_pfpf)) ...
 );
 if 0
 fprintf( ...
@@ -371,15 +410,17 @@ title('Data');
 subplot(212);
 plot(xs(:, :, k)); hold on;
 plot(xhat_bpf(:, :, k));
+plot(xhat_pfpf(:, :, k));
 plot(xhat_lin(:, :, k));
 plot(xhat_sp(:, :, k));
 plot(xhat_cf1(:, :, k));
 plot(xhat_cf(:, :, k));
-legend('State', 'Bootstrap', 'Linearized', 'Sigma-Points', 'CF1', 'ICE-CF');
+legend('State', 'Bootstrap', 'PFPF', 'Linearized', 'Sigma-Points', 'CF1', 'ICE-CF');
 title('MMSE');
 
 % Plot the posterior in a waterfall plot, together with the state trace and
 % particles (for the kth MC run)
+if 0
 figure(2); clf();
 waterfall(xg, 1:N, w(:, :, k)); hold on; grid on;
 plot(xs(:, :, k), 1:N, '--r', 'LineWidth', 2);
@@ -388,6 +429,11 @@ for n = 1:N
     if use_bpf
         x_bpf = sys_bpf(n+1).x;
         plot3(x_bpf, n*ones(1, J), zeros(1, J), '.');
+    end
+    
+    if use_pfpf
+        x_pfpf = sys_pfpf(n+1).x;
+        plot3(x_pfpf, n*ones(1, J), zeros(1, J), 'x');
     end
     
     if use_cf1
@@ -400,35 +446,48 @@ for n = 1:N
         plot3(x_cf, n*ones(1, J), zeros(1, J), '*');
     end
 end
+end
 
 % Iterate through all posteriors (slightly easier to see the differences
 % than in the waterfall plot).
 for n = 1:N
     figure(3); clf();
-    plot(xg, w(n, :, k)); hold on; grid on;
-    plot([xs(:, n, k), xs(:, n, k)], [0, 1]*max(w(n, :, k)));
+    if use_gridf
+        plot(xg, w(n, :, k)); hold on; grid on;
+        plot([xs(:, n, k), xs(:, n, k)], [0, 1]*max(w(n, :, k)));
+    end
 
-    x_bpf = sys_bpf(n+1).x;
-    plot(x_bpf, 0*ones(1, J), '.');
+    if use_bpf
+        x_bpf = sys_bpf(n+1).x;
+        plot(x_bpf, 0*ones(1, J), '.'); hold on; grid on;
+    end
+
+    if use_pfpf
+        x_pfpf = sys_pfpf(n+1).x;
+        plot(x_pfpf, 0.025*ones(1, J), 'x');
+    end
     
-    x_cf1 = sys_cf1(n+1).x;
-    plot(x_cf1, 0*ones(1, J), 'o');
+    if use_cf1
+        x_cf1 = sys_cf1(n+1).x;
+        plot(x_cf1, 0.05*ones(1, J), 'o');
+    end
 
     if use_cf
         x_cf = sys_cf(n+1).x;
-        plot(x_cf, 0*ones(1, J), 'x');
+        plot(x_cf, 0.075*ones(1, J), '*');
     end
 
 %     set(gca, 'YScale', 'log');
-    legend('Grid', 'True state', 'BPF', 'CF1', 'ICE-CF');
+    legend('Grid', 'True state', 'BPF', 'PFPF', 'CF1', 'ICE-CF');
     title(sprintf('Posterior and particles at n = %d', n));
+%     ylim([0, 0.1]);
     
     %% Plot OID for a particular particle
     % TODO:
     % * We need to find an instance where the OID is bi-modal
     % * Then we need to find two particles on either side of the modes
     % * Then we need to calculate the OID
-    if use_cf % TODO: replace by cf instead of cf1
+    if 0 %use_cf % TODO: replace by cf instead of cf1
         j = 1;
         % Get ancestor particle and proposal
         xnj = sys_cf(n).x(:, sys_cf(n+1).alpha(j));
@@ -482,7 +541,7 @@ if store
         % Remove these from the savefile; they make the file to explode
         % (but only if we don't simulate with the grid filter, which is
         % used for illustration purposes)
-        clear sys_bpf sys_cf1 sys_gf sys_cf
+        clear sys_bpf sys_cf1 sys_gf sys_pfpf sys_cf
     end
         
     % Store
