@@ -17,7 +17,7 @@ function [xhat, sys] = pf2(model, y, theta, J, par)
 %
 % Note that this is most likely not the most efficient implementation.
 %
-% ## Inputs
+% ## Input
 % * `model`: State-space model struct. Must contain the following structs.
 %   The function interfaces are the same as for the Markovian models,
 %   except that the conditional variables is a dx-times-n matrix.
@@ -42,7 +42,7 @@ function [xhat, sys] = pf2(model, y, theta, J, par)
 %        must match the `sample` function (default:
 %        `@calculate_incremental_weights`; generic internal function).
 %
-% ## Outputs
+% ## Output
 % * `xhat`: Minimum mean squared error filter state estimate (calculated 
 %    using the marginal filtering density).
 %  * `sys`: Particle system array of structs with the following fields:
