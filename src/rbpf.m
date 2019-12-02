@@ -217,48 +217,6 @@ function lv = calculate_incremental_weights_bootstrap(model, y, sp, ~, mzp, Pzp,
     end
 end
 
-%% Initialize linear states
-function [mz, Pz] = initialize_kf(model, s)
-    % TODO: This is a hack still
-    if model.pz0.fast
-        mz = model.pz0.m(s);
-        Pz = model.pz0.P(s);
-    else
-        J = size(s, 2);
-        dz = size(model.pz0.m(s(:, 1)), 1);
-        mz = zeros(dz, J);
-        Pz = zeros([dz, dz, J]);
-        for j = 1:J
-            mz(:, j) = model.pz0.m(s(:, j));
-            Pz(:, :, j) = model.pz0.P(s(:, j));
-        end
-%     m0 = model.px0.m;
-%     P0 = model.px0.P;
-%     s = m0(in)*ones(1, N) + chol(P0(in, in)).'*randn(ds, N);
-%     mz = m0(il)*ones(1, N) + P0(il, in)/P0(in, in)*(s - m0(in)*ones(1, N));
-%     Pz = P0(il, il) - P0(il, in)/P0(in, in)*P0(in, il);
-    end
-end
-
-%% Kalman filter prediction for hierarchical models
-function [mzp, Pzp] = predict_kf_hierarchical(model, sp, s, mz, Pz, theta)
-    [dz, J] = size(mz);
-    mzp = zeros(dz, J);
-    Pzp = zeros([dz, dz, J]);
-    for j = 1:J
-        spj = sp(:, j);
-        gn = model.pz.g(spj, theta);
-        Gn = model.pz.G(spj, theta);
-        Qn = model.pz.Q(spj, theta);
-        
-        mzj = mz(:, j);
-        Pzj = Pz(:, :, j);
-        
-        mzp(:, j) = gn + Gn*mzj;
-        Pzp(:, :, j) = Gn*Pzj*Gn' + Qn;
-    end
-end
-
 %% Kalman filter prediction for mixing models
 function [mzp, Pzp] = predict_kf_mixing(model, sp, s, mz, Pz, theta)
     J = size(s, 2);
@@ -307,22 +265,5 @@ if 0
             Flbar*Pz(:, :, j)*Flbar' + Gz*Qlbar*Gz' - Lt*Nt*Lt' ...
         );
 end
-    end
-end
-
-%% Kalman filter update
-function [mz, Pz] = update_kf(model, y, s, mzp, Pzp, theta)
-    [dz, J] = size(mzp);
-    mz = zeros(dz, J);
-    Pz = zeros([dz, dz, J]);
-    for j = 1:J
-        hn = model.py.h(s(:, j), theta);
-        Hn = model.py.H(s(:, j), theta);
-        Rn = model.py.R(s(:, j), theta);
-
-        Mn = Hn*Pzp(:, :, j)*Hn' + Rn;
-        Kn = Pzp(:, :, j)*Hn'/Mn;
-        mz(:, j) = mzp(:, j) + Kn*(y - hn - Hn*mzp(:, j));
-        Pz(:, :, j) = Pzp(:, :, j) - Kn*Mn*Kn';
     end
 end
