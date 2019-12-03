@@ -115,8 +115,8 @@ function [xhat, sys] = smooth_ksd(model, y, theta, Js, sys)
         
         %% Store
         if return_sys
-            sys.xs(:, :, n) = xs;
-            sys.ws(:, :, n) = ws;
+            sys(n).xs = xs;
+            sys(n).ws = ws;
         end
     end
     

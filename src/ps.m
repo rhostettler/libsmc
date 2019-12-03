@@ -1,7 +1,7 @@
-function [xhat, sys] = ps(model, y, theta, Jf, Js, par, sys)
+function varargout = ps(model, y, theta, Jf, Js, par, sys)
 % # Generic forward-backward particle smoother
 % ## Usage
-% * `xhat, = ps(model, y)`
+% * `xhat = ps(model, y)`
 % * `[xhat, sys] = ps(model, y, theta, Jf, Js, par, sys)`
 %
 % ## Description
@@ -97,17 +97,10 @@ function [xhat, sys] = ps(model, y, theta, Jf, Js, par, sys)
         theta = theta*ones(1, N);
     end
 
-    %% Filter
-    % If no filtered system is provided, run a bootstrap PF
+    %% Smoothing
+    % If no filtered system is provided, run a bootstrap PF first
     if nargin < 7 || isempty(sys)
         [~, sys] = pf(model, y, theta, Jf);
     end
-    
-    %% Smooth
-    return_sys = (nargout >= 2);
-    if return_sys
-        [xhat, sys] = par.smooth(model, y, theta, Js, sys);
-    else
-        xhat = par.smooth(model, y, theta, Js, sys);
-    end
+    [varargout{1:nargout}] = par.smooth(model, y, theta, Js, sys);
 end

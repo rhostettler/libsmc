@@ -112,12 +112,12 @@ for l = 1:L
 
     % Kronander-Schon-Dahlin smoother
     tic;
-    [xhat_ksd(:, :, l)] = ps(model, y(:, :, l), [], 2*J, J, par_ksd);
+    [xhat_ksd(:, :, l), sys_ksd] = ps(model, y(:, :, l), [], 2*J, J, par_ksd);
     t_ksd(l) = toc;
     
     % FFBSi smoother
     tic;
-    xhat_ffbsi(:, :, l) = ps(model, y(:, :, l), [], 2*J, J);
+    [xhat_ffbsi(:, :, l), sys_ffbsi] = ps(model, y(:, :, l), [], 2*J, J);
     t_ffbsi(l) = toc;
     
     % CPF-AS MCMC smoother
