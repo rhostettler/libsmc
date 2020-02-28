@@ -41,7 +41,11 @@ function n = wnorm(x, W)
     end
 
     %% Calculations
-    L = chol(W);  % W = L'*L
-    f = L*x;
-    n = sum(f.^2, 1);   % (L*x)'*(L*x) = x'*L'*L*x = x*W*x
+    [L, nd] = chol(W);  % W = L'*L
+    if ~nd
+        f = L*x;
+        n = sum(f.^2, 1);   % (L*x)'*(L*x) = x'*L'*L*x = x*W*x
+    else
+        n = x'*W*x;         % Fallback
+    end
 end
