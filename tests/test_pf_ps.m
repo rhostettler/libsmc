@@ -27,7 +27,7 @@ rng(2872);
 %% Parameters
 N = 100;        % No. of time samples
 J = 200;        % No. of particles
-L = 20;         % No. of Monte Carlo runs
+L = 1;         % No. of Monte Carlo runs
 
 %% Model
 m0 = zeros(2, 1);
@@ -67,6 +67,7 @@ y = zeros(1, N, L);
 m_kf = xs;
 xhat_bpf = xs;
 xhat_opt = xs;
+xhat_bsmcmc = xs;
 
 m_rts = xs;
 xhat_ksd = xs;
@@ -76,6 +77,7 @@ xhat_cpfas = xs;
 t_kf = zeros(1, L);
 t_bpf = t_kf;
 t_opt = t_kf;
+t_bsmcmc = t_kf;
 
 t_rts = t_kf;
 t_ksd = t_kf;
@@ -103,6 +105,11 @@ for l = 1:L
     tic;
     xhat_opt(:, :, l) = pf(model, y(:, :, l), [], J, par_opt);
     t_opt(l) = toc;
+    
+    % Independent MH Bootstrap SMCMC
+    tic;
+    [xhat_bsmcmc(:, :, l), sys_mhb] = smcmc(model, y(:, :, l), [], J);
+    t_bsmcmc(l) = toc;
         
     %% Smoothers
     % RTS smoother (requires EKF/UKF toolbox)
@@ -137,6 +144,7 @@ e_rmse_none = trmse(xs);
 e_rmse_kf = trmse(m_kf - xs);
 e_rmse_bpf = trmse(xhat_bpf - xs);
 e_rmse_opt = trmse(xhat_opt - xs);
+e_rmse_bsmcmc = trmse(xhat_bsmcmc - xs);
 
 % Smoothers
 e_rmse_rts = trmse(m_rts - xs);
@@ -151,7 +159,8 @@ fprintf('\tRMSE\t\t\tTime\n');
 fprintf('\t----\t\t\t----\n');
 
 % Filters
-fprintf('None\t%.4f (%.2f)\t%.2e (%.2e)\n', ...
+fprintf('Filters\n');
+fprintf('None\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
     mean(e_rmse_none), std(e_rmse_none), 0, 0 ...
 );
 fprintf('KF\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
@@ -163,8 +172,12 @@ fprintf('BPF\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
 fprintf('OPT PF\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
     mean(e_rmse_opt), std(e_rmse_opt), mean(t_opt), std(t_opt) ...
 );
+fprintf('B-SMCMC\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
+    mean(e_rmse_bsmcmc), std(e_rmse_bsmcmc), mean(t_bsmcmc), std(t_bsmcmc) ...
+);
 
 % Smoothers
+fprintf('\nSmoohters:\n');
 fprintf('RTSS\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
     mean(e_rmse_rts), std(e_rmse_rts), mean(t_rts), std(t_rts) ...
 );
@@ -177,3 +190,20 @@ fprintf('KSD-PS\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
 fprintf('FFBSi\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
     mean(e_rmse_ffbsi), std(e_rmse_ffbsi), mean(t_ffbsi), std(t_ffbsi) ...
 );
+
+%% Plots
+for i = 1:2
+    figure(i); clf();
+    plot(xs(i, :)); hold on;
+    plot(m_kf(i, :));
+    plot(xhat_bpf(i, :));
+    plot(xhat_opt(i, :));
+    plot(xhat_bsmcmc(i, :));
+    xlabel('n'); ylabel('x[n]');
+    legend('State', 'KF', 'BPF', 'OID', 'SMCMC');
+    grid on;
+    title('Filters');
+end
+
+% xxx = cat(3, sys_mhb(:).xf);
+% figure(); plot(squeeze(xxx(2, :, :)).');
