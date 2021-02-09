@@ -35,7 +35,7 @@ warning('off', 'all');
 xg = -5:1e-3:5;
 
 % Filter parameters
-J_bpf = 50000;              % Number of particles
+J_bpf = 250;              % Number of particles
 J_cf1 = 500;
 J_gf = 100;
 J_pfpf = 100;
@@ -46,11 +46,11 @@ L_pfpf = 29;                % PFPF integration steps
 epsilon = 1e-3;             % Convergence threshold (1e-3)
 
 % Simulation parameters
-N = 100;                    % Number of time samples (100)
-K = 100;                    % Number of MC simulations (100)
+N = 10;                    % Number of time samples (100)
+K = 2;                    % Number of MC simulations (100)
 
 % Model parameters
-dx = 10;                    % No. of patches; equals state dimension (10)
+dx = 5;                    % No. of patches; equals state dimension (10)
 r = 1;                      % Growth rate (1)
 c = 1;                      % Migration parameter (scaling of distance) (1)
 m = 0.1;                    % Migration rate (0.1)
@@ -64,16 +64,16 @@ beta = 0.5;                 % Likelihood skewness/tail (0 = poisson; 0.5)
 
 % Which filters to run
 use_grid = false;           % Grid filter; run this only when dx = 1
-use_bpf = false;             % Bootstrap PF
-use_cf1 = false;             % One-step closed form OID approximation
+use_bpf = true;             % Bootstrap PF
+use_cf1 = true;             % One-step closed form OID approximation
 use_gf = true;              % Gaussian flow OID approximation
-use_pfpf = false;            % Particle flow PF with LEDH flow
-use_cf = false;              % Closed-form ICE OID approximation
+use_pfpf = true;            % Particle flow PF with LEDH flow
+use_cf = true;              % Closed-form ICE OID approximation
 use_lin = false;            % Linearization ICE OID approximation
 use_sp = false;             % Sigma-point ICE OID approximation
 
 % Other switches
-plots = false;               % Show plots?
+plots = false;              % Show debugging plots?
 store = false;              % Save the simulation?
 
 % Other algorithm parameters
@@ -183,22 +183,22 @@ par_cf = struct( ...
     'calculate_incremental_weights', @calculate_incremental_weights_generic ...
 );
 
-% ICE OID approximation, Taylor series moment approximation
-slr_lin = @(m, P, theta) slr_taylor(m, P, theta, g, Gx, R);
-par_lin = struct( ...
-    'sample', @(model, y, x, theta) sample_gaussian(model, y(theta == 1, :), x, theta, f, Q, slr_lin, L, gammaT, epsilon), ...
-    'calculate_incremental_weights', @calculate_incremental_weights_generic ...
-);
-
-% ICE OID approximation, sigma-point moment approximation
-dx = size(m0, 1);
-[wm, wc, c] = ut_weights(dx, alpha_sp, beta_sp, kappa_sp);
-Xi = ut_sigmas(zeros(dx, 1), eye(dx), c);
-slr_sp = @(m, P, theta) slr_sp(m, P, theta, g, R, Xi, wm, wc);
-par_sp = struct( ...
-    'sample', @(model, y, x, theta) sample_gaussian(model, y(theta == 1, :), x, theta, f, Q, slr_sp, L, gammaT, epsilon), ...
-    'calculate_incremental_weights', @calculate_incremental_weights_generic ...
-);
+% % ICE OID approximation, Taylor series moment approximation
+% slr_lin = @(m, P, theta) slr_taylor(m, P, theta, g, Gx, R);
+% par_lin = struct( ...
+%     'sample', @(model, y, x, theta) sample_gaussian(model, y(theta == 1, :), x, theta, f, Q, slr_lin, L, gammaT, epsilon), ...
+%     'calculate_incremental_weights', @calculate_incremental_weights_generic ...
+% );
+% 
+% % ICE OID approximation, sigma-point moment approximation
+% dx = size(m0, 1);
+% [wm, wc, c] = ut_weights(dx, alpha_sp, beta_sp, kappa_sp);
+% Xi = ut_sigmas(zeros(dx, 1), eye(dx), c);
+% slr_sp = @(m, P, theta) slr_sp(m, P, theta, g, R, Xi, wm, wc);
+% par_sp = struct( ...
+%     'sample', @(model, y, x, theta) sample_gaussian(model, y(theta == 1, :), x, theta, f, Q, slr_sp, L, gammaT, epsilon), ...
+%     'calculate_incremental_weights', @calculate_incremental_weights_generic ...
+% );
 
 %% Preallocate
 xs = zeros(dx, N, K);
@@ -210,16 +210,16 @@ xhat_cf1 = xhat_bpf;
 xhat_gf = xhat_bpf;
 xhat_pfpf = xhat_bpf;
 xhat_cf = xhat_bpf;
-xhat_lin = xhat_bpf;
-xhat_sp = xhat_bpf;
+% xhat_lin = xhat_bpf;
+% xhat_sp = xhat_bpf;
 
 ess_bpf = zeros(1, N, K);
 ess_cf1 = ess_bpf;
 ess_gf = ess_bpf;
 ess_pfpf = ess_bpf;
 ess_cf = ess_bpf;
-ess_lin = ess_bpf;
-ess_sp = ess_bpf;
+% ess_lin = ess_bpf;
+% ess_sp = ess_bpf;
 
 l_cf = zeros(N*J_cf, K);
 
@@ -228,8 +228,8 @@ r_cf1 = r_bpf;
 r_gf = r_bpf;
 r_pfpf = r_bpf;
 r_cf = r_bpf;
-r_lin = r_bpf;
-r_sp = r_bpf;
+% r_lin = r_bpf;
+% r_sp = r_bpf;
 
 t_bpf = zeros(1, K);
 t_cf1 = t_bpf;
@@ -237,9 +237,10 @@ t_gf = t_bpf;
 t_pfpf = t_bpf;
 t_cf = t_bpf;
 t_grid = t_bpf;
-t_lin = t_bpf;
-t_sp = t_bpf;
+% t_lin = t_bpf;
+% t_sp = t_bpf;
 
+use_grid = use_grid && dx == 1;
 if use_grid
     NGrid = length(xg);
     w = zeros(N, NGrid, K);
@@ -251,11 +252,10 @@ fh = pbar(K);
 for k = 1:K
     %% Simulation
     theta = rand([dx, N]) < 0.5;    % Randomly generate measurement instants
-%     theta = ones(dx, 1);
     [xs(:, :, k), ys(:, :, k)] = simulate_model(model, theta, N);
     
     %% Estimation
-    if use_grid && dx == 1
+    if use_grid
         tic;
         [xhat_grid(:, :, k), w(:, :, k)] = gridf(model, ys(:, :, k), theta, xg);
         t_grid(k) = toc;
@@ -325,30 +325,30 @@ for k = 1:K
         end
     end
     
-    % Taylor series approximation of SLR
-    if use_lin
-        tic;
-        [xhat_lin(:, :, k), sys_lin] = pf(model, ys(:, :, k), theta, J_bpf/L, par_lin);
-        t_lin(k) = toc;
-        tmp = cat(2, sys_lin(2:N+1).rstate);
-        ess_lin(:, :, k) = cat(2, tmp.ess);
-        r_lin(:, :, k) = cat(2, tmp.r);
-        tmp = cat(1, sys_lin(2:N+1).q);
-        l_lin(:, k) = cat(1, tmp.l);
-    end
-
-    % SLR using sigma-points, L iterations
-    if use_sp
-        tic;
-        [xhat_sp(:, :, k), sys_sp] = pf(model, ys(:, :, k), theta, J_bpf/L, par_sp);
-        t_sp(k) = toc;
-        tmp = cat(2, sys_sp(2:N+1).rstate);
-        ess_sp(:, :, k) = cat(2, tmp.ess);
-        r_sp(:, :, k) = cat(2, tmp.r);
-        tmp = cat(1, sys_sp(2:N+1).q);
-        l_sp(:, k) = cat(1, tmp.l);
-    end
-    
+%     % Taylor series approximation of SLR
+%     if use_lin
+%         tic;
+%         [xhat_lin(:, :, k), sys_lin] = pf(model, ys(:, :, k), theta, J_bpf/L, par_lin);
+%         t_lin(k) = toc;
+%         tmp = cat(2, sys_lin(2:N+1).rstate);
+%         ess_lin(:, :, k) = cat(2, tmp.ess);
+%         r_lin(:, :, k) = cat(2, tmp.r);
+%         tmp = cat(1, sys_lin(2:N+1).q);
+%         l_lin(:, k) = cat(1, tmp.l);
+%     end
+% 
+%     % SLR using sigma-points, L iterations
+%     if use_sp
+%         tic;
+%         [xhat_sp(:, :, k), sys_sp] = pf(model, ys(:, :, k), theta, J_bpf/L, par_sp);
+%         t_sp(k) = toc;
+%         tmp = cat(2, sys_sp(2:N+1).rstate);
+%         ess_sp(:, :, k) = cat(2, tmp.ess);
+%         r_sp(:, :, k) = cat(2, tmp.r);
+%         tmp = cat(1, sys_sp(2:N+1).q);
+%         l_sp(:, k) = cat(1, tmp.l);
+%     end
+        
     %% Progress
     pbar(k, fh);
 end
@@ -360,8 +360,8 @@ iNaN_cf1 = squeeze(isnan(xhat_cf1(1, N, :)));
 iNaN_gf = squeeze(isnan(xhat_gf(1, N, :)));
 iNaN_pfpf = squeeze(isnan(xhat_pfpf(1, N, :)));
 iNaN_cf = squeeze(isnan(xhat_cf(1, N, :)));
-iNaN_lin = squeeze(isnan(xhat_lin(1, N, :)));
-iNaN_sp = squeeze(isnan(xhat_sp(1, N, :)));
+% iNaN_lin = squeeze(isnan(xhat_lin(1, N, :)));
+% iNaN_sp = squeeze(isnan(xhat_sp(1, N, :)));
 
 e_rmse_grid = trmse(xhat_grid - xs);
 e_rmse_bpf = trmse(xhat_bpf(:, :, ~iNaN_bpf) - xs(:, :, ~iNaN_bpf));
@@ -369,8 +369,8 @@ e_rmse_cf1 = trmse(xhat_cf1(:, :, ~iNaN_cf1) - xs(:, :, ~iNaN_cf1));
 e_rmse_gf = trmse(xhat_gf(:, :, ~iNaN_gf) - xs(:, :, ~iNaN_gf));
 e_rmse_pfpf = trmse(xhat_pfpf(:, :, ~iNaN_pfpf) - xs(:, :, ~iNaN_pfpf));
 e_rmse_cf = trmse(xhat_cf(:, :, ~iNaN_cf) - xs(:, :, ~iNaN_cf));
-e_rmse_lin = trmse(xhat_lin(:, :, ~iNaN_lin) - xs(:, :, ~iNaN_lin));
-e_rmse_sp = trmse(xhat_sp(:, :, ~iNaN_sp) - xs(:, :, ~iNaN_sp));
+% e_rmse_lin = trmse(xhat_lin(:, :, ~iNaN_lin) - xs(:, :, ~iNaN_lin));
+% e_rmse_sp = trmse(xhat_sp(:, :, ~iNaN_sp) - xs(:, :, ~iNaN_sp));
 
 fprintf('\tRMSE\t\t\tTime\t\tResampling\tConvergence\tIterations\tESS\t\tESS (%%)\n');
 fprintf( ...
@@ -417,69 +417,58 @@ fprintf( ...
     mean(mean(ess_cf)), std(mean(ess_cf)), ...
     mean(mean(ess_cf/J_cf*100)), std(mean(ess_cf/J_cf*100)) ...
 );
-if 0
-fprintf( ...
-    'LIN\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\t\t%.2f (%.2f)\t\t%.2f (%.2f)\n', ...
-    mean(e_rmse_lin), std(e_rmse_lin), mean(t_lin), std(t_lin), ...
-    mean(sum(r_lin(:, :, ~iNaN_lin))/N), std(sum(r_sp(:, :, ~iNaN_lin))/N), ...
-    1-sum(iNaN_lin)/K, mean(l_lin), std(l_lin) ...
-);
-fprintf( ...
-    'SP\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\t\t%.2f (%.2f)\t\t%.2f (%.2f)\n', ...
-    mean(e_rmse_sp), std(e_rmse_sp), mean(t_sp), std(t_sp), ...
-    mean(sum(r_sp(:, :, ~iNaN_sp))/N), std(sum(r_sp(:, :, ~iNaN_sp))/N), ...
-    1-sum(iNaN_sp)/K, mean(l_sp), std(l_sp) ...
-);
-end
+% fprintf( ...
+%     'LIN\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\t\t%.2f (%.2f)\t\t%.2f (%.2f)\n', ...
+%     mean(e_rmse_lin), std(e_rmse_lin), mean(t_lin), std(t_lin), ...
+%     mean(sum(r_lin(:, :, ~iNaN_lin))/N), std(sum(r_sp(:, :, ~iNaN_lin))/N), ...
+%     1-sum(iNaN_lin)/K, mean(l_lin), std(l_lin) ...
+% );
+% fprintf( ...
+%     'SP\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\t\t%.2f (%.2f)\t\t%.2f (%.2f)\n', ...
+%     mean(e_rmse_sp), std(e_rmse_sp), mean(t_sp), std(t_sp), ...
+%     mean(sum(r_sp(:, :, ~iNaN_sp))/N), std(sum(r_sp(:, :, ~iNaN_sp))/N), ...
+%     1-sum(iNaN_sp)/K, mean(l_sp), std(l_sp) ...
+% );
 
 %% Plots
-kk = (1:K)/K;
+% Relative ESS
 figure(1); clf();
-stairs(sort(e_rmse_bpf), kk); hold on;
-stairs(sort(e_rmse_cf), kk);
-legend('BPF', 'CF');
+plot(mean(ess_bpf(:, :, ~iNaN_bpf)/J_bpf, 3)); hold on; grid on;
+plot(mean(ess_cf1(:, :, ~iNaN_cf1)/J_cf1, 3));
+plot(mean(ess_gf(:, :, ~iNaN_gf)/(J_gf), 3));
+plot(mean(ess_cf(:, :, ~iNaN_cf)/(J_cf/L), 3));
+% plot(mean(ess_lin(:, :, ~iNaN_lin)/(J/L), 3));
+% plot(mean(ess_sp(:, :, ~iNaN_sp)/(J/L), 3));
+set(gca, 'YScale', 'log');
+xlabel('n'); ylabel('Relative ESS');
+legend('BPF', 'OID CF1', 'GF', 'ICE-CF', 'ICE-Taylor', 'ICE-SP');
+title('Effective sample size (relative)');
 
-if plots
-    if 0 && K == 1
-    figure(1); clf();
-    plot(xs.'); hold on; grid on;
-    plot(xhat_bpf.', '--');
-    % plot(xhat_lin.', '-.');
-    plot(xhat_sp.', '-.');
-    title('States');
-    end
+% Absolute ESS
+figure(2); clf();
+plot(mean(ess_bpf(:, :, ~iNaN_bpf), 3)); hold on; grid on;
+plot(mean(ess_cf1(:, :, ~iNaN_cf1), 3));
+plot(mean(ess_gf(:, :, ~iNaN_gf), 3));
+plot(mean(ess_cf(:, :, ~iNaN_cf), 3));
+% plot(mean(ess_lin(:, :, ~iNaN_lin), 3));
+% plot(mean(ess_sp(:, :, ~iNaN_sp), 3));
+ylim([10, 1000]);
+set(gca, 'YScale', 'log');
+xlabel('n'); ylabel('ESS');
+legend('BPF', 'OID CF1', 'GF', 'ICE-CF', 'ICE-Taylor', 'ICE-SP');
+title('Effective sample size (absolute)');
 
-    % ESS
-    figure(3); clf();
-    plot(mean(ess_bpf(:, :, ~iNaN_bpf)/J_bpf, 3)); hold on; grid on;
-    plot(mean(ess_cf1(:, :, ~iNaN_cf1)/J_bpf, 3));
-    plot(mean(ess_gf(:, :, ~iNaN_gf)/(J_bpf/L), 3));
-    plot(mean(ess_cf(:, :, ~iNaN_cf)/(J_bpf/L), 3));
-%     plot(mean(ess_lin(:, :, ~iNaN_lin)/(J/L), 3));
-%     plot(mean(ess_sp(:, :, ~iNaN_sp)/(J/L), 3));
-    set(gca, 'YScale', 'log');
-    legend('BPF', 'OID CF1', 'GF', 'ICE-CF', 'ICE-Taylor', 'ICE-SP');
-    title('Effective sample size (relative)');
-    
-    figure(4); clf();
-    plot(mean(ess_bpf(:, :, ~iNaN_bpf), 3)); hold on; grid on;
-    plot(mean(ess_cf1(:, :, ~iNaN_cf1), 3));
-    plot(mean(ess_gf(:, :, ~iNaN_gf), 3));
-    plot(mean(ess_cf(:, :, ~iNaN_cf), 3));
-%     plot(mean(ess_lin(:, :, ~iNaN_lin), 3));
-%     plot(mean(ess_sp(:, :, ~iNaN_sp), 3));
-    ylim([10, 1000]);
-    set(gca, 'YScale', 'log');
-    legend('BPF', 'OID CF1', 'GF', 'ICE-CF', 'ICE-Taylor', 'ICE-SP');
-    title('Effective sample size (absolute)');
-    
-    figure(5); clf();
-    hist(l_cf(:), 1:L);
-    title('Number of iterations');
+% Number of iterations for approximating the OID
+figure(3); clf();
+hist(l_cf(:), 1:L);
+xlabel('l'); ylabel('No. of occurences');
+title('Number of iterations');
 
-    % Posterior
-    j = 12;
+%% [debug] Plots for debugging
+if plots && 0
+    % Plot the posterior for each time step
     if use_grid
+        j = 12;
         lpy = zeros(1, NGrid);
         for n = 1:N
             for ngrid = 1:NGrid
@@ -520,46 +509,57 @@ if plots
             pause();
         end
     end
-    
-    % States and measurements (for debugging only)
-if 1
+
+    % States
+    if K == 1
+        figure(1); clf();
+        plot(xs.'); hold on; grid on;
+        plot(xhat_bpf.', '--');
+        % plot(xhat_lin.', '-.');
+%         plot(xhat_sp.', '-.');
+        title('States');
+    end
+
+    % States and measurements
+    % N.B.: This will generate 2*dx plots!
     for i = 1:dx
-        figure(10+i); clf();
+        figure(100+i); clf();
         plot(xs(i, :, k)); hold on;
         plot(xhat_bpf(i, :, k));
         plot(xhat_cf(i, :, k));
         legend('True state', 'BPF', 'ICE-CF');
         title(sprintf('State %d', i));
-        
-        figure(20+i); clf();
+
+        figure(200+i); clf();
         plot(exp(xs(i, :, k))); hold on; grid on;
         plot(ys(i, :, k));
         legend('Population', 'Measurement');
         title(sprintf('Population %d', i));
     end
 end
-end
+% [/debug]
 
-%% Store results
+%% [debug] Store results
 if store
     clear sys_bpf sys_cf1 sys_gf sys_cf;
     outfile = sprintf('Save/example_multiricker2_J=%d_L=%d_K=%d_N=%d.mat', J_bpf, L, K, N);
 %     save(outfile);
-if 0
-    if use_bpf
-        save(outfile, 'e_rmse_bpf', '-append');
-    end
-    if use_cf1
-        save(outfile, 'e_rmse_cf1', '-append');
-    end
-    if use_gf
-        save(outfile, 'e_rmse_gf', '-append');
-    end
-    if use_pfpf
-        save(outfile, 'e_rmse_pfpf', '-append');
-    end
-    if use_cf
-        save(outfile, 'e_rmse_cf', '-append');
+    if 0
+        if use_bpf
+            save(outfile, 'e_rmse_bpf', '-append');
+        end
+        if use_cf1
+            save(outfile, 'e_rmse_cf1', '-append');
+        end
+        if use_gf
+            save(outfile, 'e_rmse_gf', '-append');
+        end
+        if use_pfpf
+            save(outfile, 'e_rmse_pfpf', '-append');
+        end
+        if use_cf
+            save(outfile, 'e_rmse_cf', '-append');
+        end
     end
 end
-end
+% [/debug]

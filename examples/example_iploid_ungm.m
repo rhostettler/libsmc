@@ -64,7 +64,7 @@ kappa = 0;
 
 % Simulation parameters
 N = 100;            % Number of time samples (100)
-K = 100;            % Number of MC simulations (100)
+K = 10;            % Number of MC simulations (100)
 
 % Model parameters: Typical UNGM parameters except for the measurement
 % noise covariance (R), which is normally set to 1 (1e-4 makes it much more
@@ -85,7 +85,7 @@ use_cf = true;          % Closed form iterated conditional expectations w/ poste
 % Other switches
 abc = false;        % If set to true, measurements are noise-free (false)
 uniform = false;    % Use uniform pseudo-likelihood? (false)
-store = false;       % Save the simulation results (true/false)
+store = false;      % Save the simulation results (true/false)
 plots = false;      % Show plots (false)
 
 %% Model
@@ -137,22 +137,22 @@ par_pfpf = struct( ...
     'ukf', [alpha, beta, kappa] ...
 );
 
-% SLR using Taylor series approximation
-slr_lin = @(m, P, theta) slr_taylor(m, P, theta, g, Gx, R);
-par_lin = struct( ...
-    'sample', @(model, y, x, theta) sample_gaussian(model, y, x, theta, f, @(x, theta) Q, slr_lin, L), ...
-    'calculate_incremental_weights', @calculate_incremental_weights_generic ...
-);
-
-% SLR using sigma-points
-Nx = size(m0, 1);
-[wm, wc, c] = ut_weights(Nx, alpha, beta, kappa);
-Xi = ut_sigmas(zeros(Nx, 1), eye(Nx), c);
-slr_sp = @(mp, Pp, theta) slr_sp(mp, Pp, theta, g, @(x, theta) R, Xi, wm, wc);
-par_sp = struct( ...
-    'sample', @(model, y, x, theta) sample_gaussian(model, y, x, theta, f, @(x, theta) Q, slr_sp, L), ...
-    'calculate_incremental_weights', @calculate_incremental_weights_generic... , ...
-);
+% % SLR using Taylor series approximation
+% slr_lin = @(m, P, theta) slr_taylor(m, P, theta, g, Gx, R);
+% par_lin = struct( ...
+%     'sample', @(model, y, x, theta) sample_gaussian(model, y, x, theta, f, @(x, theta) Q, slr_lin, L), ...
+%     'calculate_incremental_weights', @calculate_incremental_weights_generic ...
+% );
+% 
+% % SLR using sigma-points
+% Nx = size(m0, 1);
+% [wm, wc, c] = ut_weights(Nx, alpha, beta, kappa);
+% Xi = ut_sigmas(zeros(Nx, 1), eye(Nx), c);
+% slr_sp = @(mp, Pp, theta) slr_sp(mp, Pp, theta, g, @(x, theta) R, Xi, wm, wc);
+% par_sp = struct( ...
+%     'sample', @(model, y, x, theta) sample_gaussian(model, y, x, theta, f, @(x, theta) Q, slr_sp, L), ...
+%     'calculate_incremental_weights', @calculate_incremental_weights_generic... , ...
+% );
 
 % One-step closed form Gaussian OID approximation
 slr_cf = @(m, P, theta) slr_cf(m, P, theta, Ey, Cy, Cyx);
@@ -167,9 +167,8 @@ par_cf = struct( ...
     'calculate_incremental_weights', @calculate_incremental_weights_generic ...
 );
 
-%% MC Simulations
+%% Monte Carlo simulations
 % Preallocate
-if 1
 xs = zeros(1, N, K);
 ys = zeros(1, N, K);
 
@@ -177,47 +176,41 @@ xhat_grid = zeros(1, N, K);
 xhat_bpf = xhat_grid;
 xhat_gf = xhat_grid;
 xhat_pfpf = xhat_grid;
-xhat_lin = xhat_bpf;
-xhat_sp = xhat_bpf;
 xhat_cf1 = xhat_bpf;
 xhat_cf = xhat_bpf;
+% xhat_lin = xhat_bpf;
+% xhat_sp = xhat_bpf;
 
 ess_bpf = zeros(1, N, K);
 ess_gf = ess_bpf;
 ess_pfpf = ess_bpf;
-ess_lin = ess_bpf;
-ess_sp = ess_bpf;
 ess_cf1 = ess_bpf;
 ess_cf = ess_bpf;
+% ess_lin = ess_bpf;
+% ess_sp = ess_bpf;
 
 r_bpf = zeros(1, N+1, K);
 r_gf = r_bpf;
 r_pfpf = r_bpf;
-r_lin = r_bpf;
-r_sp = r_bpf;
 r_cf1 = r_bpf;
 r_cf = r_bpf;
+% r_lin = r_bpf;
+% r_sp = r_bpf;
 
 t_grid = zeros(1, K);
 t_bpf = t_grid;
 t_gf = t_grid;
 t_pfpf = t_grid;
-t_lin = t_bpf;
-t_sp = t_bpf;
 t_cf1 = t_bpf;
 t_cf = t_bpf;
-
-H_grid = zeros(1, N, K);
-H_bpf = H_grid;
-H_cf1 = H_bpf;
-H_cf = H_bpf;
+% t_lin = t_bpf;
+% t_sp = t_bpf;
 
 l_cf = zeros(1, K);
 
 if use_gridf
     NGrid = length(xg);
     w = zeros(N, NGrid, K);
-end
 end
 
 % Simulate
@@ -255,7 +248,6 @@ for k = 1:K
         t_bpf(k) = toc;
         tmp = cat(2, sys_bpf(2:N+1).rstate);
         ess_bpf(:, :, k) = cat(2, tmp.ess);
-    %         [H_bpf(:, :, k), H_grid(:, :, k)] = estimate_cross_entropy(xg, w(:, :, k), sys_bpf(2:N+1));
     end
     
     % Gaussian flow
@@ -274,25 +266,8 @@ for k = 1:K
         t_pfpf(k) = toc;
         tmp = cat(2, sys_pfpf(2:N+1).rstate);
         ess_pfpf(:, :, k) = cat(2, tmp.ess);
-        % TODO: update everything here
     end
     
-    % Taylor series
-if 0
-    tic;
-    [xhat_lin(:, :, k), sys_lin] = pf(model, ys(:, :, k), theta, J, par_lin);
-    t_lin(k) = toc;
-end
-
-    % Sigma-point approximation of SLR
-if 0
-    tic;
-    [xhat_sp(:, :, k), sys_sp] = pf(model, ys(:, :, k), theta, J, par_sp);
-    t_sp(k) = toc;
-    tmp = cat(2, sys_sp(2:N+1).rstate);
-    ess_sp(:, :, k) = cat(2, tmp.ess);
-end
-
     % One-step OID approximation
     if use_cf1
         tic;
@@ -300,7 +275,6 @@ end
         t_cf1(k) = toc;
         tmp = cat(2, sys_cf1(2:N+1).rstate);
         ess_cf1(:, :, k) = cat(2, tmp.ess);
-    %     H_cf1(:, :, k) = estimate_cross_entropy(xg, w(:, :, k), sys_cf1(2:N+1));
     end
    
     % Closed form, iterated conditional expectations
@@ -312,8 +286,21 @@ end
         ess_cf(:, :, k) = cat(2, tmp.ess);
         tmp = cat(1, sys_cf(2:N+1).qstate);
         l_cf(k) = mean(cat(1, tmp.l));
-    %     H_cf(:, :, k) = estimate_cross_entropy(xg, w(:, :, k), sys_cf(2:N+1));
     end
+    
+%     if 0
+%         % Taylor series
+%         tic;
+%         [xhat_lin(:, :, k), sys_lin] = pf(model, ys(:, :, k), theta, J, par_lin);
+%         t_lin(k) = toc;
+% 
+%         % Sigma-point approximation of SLR
+%         tic;
+%         [xhat_sp(:, :, k), sys_sp] = pf(model, ys(:, :, k), theta, J, par_sp);
+%         t_sp(k) = toc;
+%         tmp = cat(2, sys_sp(2:N+1).rstate);
+%         ess_sp(:, :, k) = cat(2, tmp.ess);
+%     end
 
     %% Progress
     pbar(k, fh);
@@ -325,19 +312,19 @@ iNaN_grid = squeeze(isnan(xhat_grid(1, N, :)));
 iNaN_bpf = squeeze(isnan(xhat_bpf(1, N, :)));
 iNaN_gf = squeeze(isnan(xhat_gf(1, N, :)));
 iNaN_pfpf = squeeze(isnan(xhat_pfpf(1, N, :)));
-iNaN_lin = squeeze(isnan(xhat_lin(1, N, :)));
-iNaN_sp = squeeze(isnan(xhat_sp(1, N, :)));
 iNaN_cf1 = squeeze(isnan(xhat_cf1(1, N, :)));
 iNaN_cf = squeeze(isnan(xhat_cf(1, N, :)));
+% iNaN_lin = squeeze(isnan(xhat_lin(1, N, :)));
+% iNaN_sp = squeeze(isnan(xhat_sp(1, N, :)));
 
 e_rmse_grid = trmse(xhat_grid(:, :, ~iNaN_grid) - xs(:, :, ~iNaN_grid));
 e_rmse_bpf = trmse(xhat_bpf(:, :, ~iNaN_bpf) - xs(:, :, ~iNaN_bpf));
 e_rmse_gf = trmse(xhat_gf(:, :, ~iNaN_gf) - xs(:, :, ~iNaN_gf));
 e_rmse_pfpf = trmse(xhat_pfpf(:, :, ~iNaN_pfpf) - xs(:, :, ~iNaN_pfpf));
-e_rmse_lin = trmse(xhat_lin(:, :, ~iNaN_lin) - xs(:, :, ~iNaN_lin));
-e_rmse_sp = trmse(xhat_sp(:, :, ~iNaN_sp) - xs(:, :, ~iNaN_sp));
 e_rmse_cf1 = trmse(xhat_cf1(:, :, ~iNaN_cf1) - xs(:, :, ~iNaN_cf1));
 e_rmse_cf = trmse(xhat_cf(:, :, ~iNaN_cf) - xs(:, :, ~iNaN_cf));
+% e_rmse_lin = trmse(xhat_lin(:, :, ~iNaN_lin) - xs(:, :, ~iNaN_lin));
+% e_rmse_sp = trmse(xhat_sp(:, :, ~iNaN_sp) - xs(:, :, ~iNaN_sp));
 
 fprintf('\tRMSE\t\t\tTime\t\tResampling\tConvergence\tESS\n');
 fprintf( ...
@@ -365,41 +352,38 @@ fprintf( ...
     1-sum(iNaN_pfpf)/K, ...
     mean(mean(ess_pfpf)), std(mean(ess_pfpf)) ...
 );
-if 0
-fprintf( ...
-    'LIN\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\n', ...
-    mean(e_rmse_lin), std(e_rmse_lin), mean(t_lin), std(t_lin), ...
-    mean(sum(r_lin(:, :, ~iNaN_lin))/N), std(sum(r_sp(:, :, ~iNaN_lin))/N), ...
-    1-sum(iNaN_lin)/K ...
-);
-fprintf( ...
-    'SP\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\n', ...
-    mean(e_rmse_sp), std(e_rmse_sp), mean(t_sp), std(t_sp), ...
-    mean(sum(r_sp(:, :, ~iNaN_sp))/N), std(sum(r_sp(:, :, ~iNaN_sp))/N), ...
-    1-sum(iNaN_sp)/K ...
-);
-end
 fprintf( ...
     'CF1\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\t\t%.2f (%.2f)\n', ...
     mean(e_rmse_cf1), std(e_rmse_cf1), mean(t_cf1), std(t_cf1), ...
-    mean(sum(r_cf1(:, :, ~iNaN_cf1))/N), std(sum(r_sp(:, :, ~iNaN_cf1))/N), ...
+    mean(sum(r_cf1(:, :, ~iNaN_cf1))/N), std(sum(r_cf1(:, :, ~iNaN_cf1))/N), ...
     1-sum(iNaN_cf1)/K, ...
     mean(mean(ess_cf1)), std(mean(ess_cf1)) ...
 );
 fprintf( ...
     'CF\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\t\t%.2f (%.2f)\n', ...
     mean(e_rmse_cf), std(e_rmse_cf), mean(t_cf), std(t_cf), ...
-    mean(sum(r_cf(:, :, ~iNaN_cf))/N), std(sum(r_sp(:, :, ~iNaN_cf))/N), ...
+    mean(sum(r_cf(:, :, ~iNaN_cf))/N), std(sum(r_cf(:, :, ~iNaN_cf))/N), ...
     1-sum(iNaN_cf)/K, ...
     mean(mean(ess_cf)), std(mean(ess_cf)) ...
 );
+% fprintf( ...
+%     'LIN\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\n', ...
+%     mean(e_rmse_lin), std(e_rmse_lin), mean(t_lin), std(t_lin), ...
+%     mean(sum(r_lin(:, :, ~iNaN_lin))/N), std(sum(r_sp(:, :, ~iNaN_lin))/N), ...
+%     1-sum(iNaN_lin)/K ...
+% );
+% fprintf( ...
+%     'SP\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\n', ...
+%     mean(e_rmse_sp), std(e_rmse_sp), mean(t_sp), std(t_sp), ...
+%     mean(sum(r_sp(:, :, ~iNaN_sp))/N), std(sum(r_sp(:, :, ~iNaN_sp))/N), ...
+%     1-sum(iNaN_sp)/K ...
+% );
 fprintf('Average number of iterations: %.1f (%.1f)\n', mean(l_cf), std(l_cf));
 
 %% Plots
-if plots
 % For plots of a specific MC run, use the last one since we only have the 
 % particle system for that one available (too much to store otherwise, 
-% we'll run out of memory).
+% we'd run out of memory).
 k = K;
 
 % Show the true state and the MMSE
@@ -410,47 +394,29 @@ title('Data');
 subplot(212);
 plot(xs(:, :, k)); hold on;
 plot(xhat_bpf(:, :, k));
+plot(xhat_gf(:, :, k));
 plot(xhat_pfpf(:, :, k));
-plot(xhat_lin(:, :, k));
-plot(xhat_sp(:, :, k));
 plot(xhat_cf1(:, :, k));
 plot(xhat_cf(:, :, k));
-legend('State', 'Bootstrap', 'PFPF', 'Linearized', 'Sigma-Points', 'CF1', 'ICE-CF');
+% plot(xhat_lin(:, :, k));
+% plot(xhat_sp(:, :, k));
+legend('State', 'Bootstrap', 'GF', 'PFPF', 'CF1', 'ICE-CF', 'Linearized', 'Sigma-Points');
 title('MMSE');
 
-% Plot the posterior in a waterfall plot, together with the state trace and
-% particles (for the kth MC run)
-if 0
+% Mean ESS
 figure(2); clf();
-waterfall(xg, 1:N, w(:, :, k)); hold on; grid on;
-plot(xs(:, :, k), 1:N, '--r', 'LineWidth', 2);
+plot(mean(ess_bpf, 3)); hold on; grid on;
+plot(mean(ess_gf, 3));
+plot(mean(ess_pfpf, 3));
+plot(mean(ess_cf1, 3));
+plot(mean(ess_cf, 3));
+legend('Bootstrap', 'GF', 'PFPF', 'CF1', 'ICE-PF (CF)');
+xlabel('n'); ylabel('ESS');
+title('Effective sample size');
 
+% Posteriors and importance density
 for n = 1:N
-    if use_bpf
-        x_bpf = sys_bpf(n+1).x;
-        plot3(x_bpf, n*ones(1, J), zeros(1, J), '.');
-    end
-    
-    if use_pfpf
-        x_pfpf = sys_pfpf(n+1).x;
-        plot3(x_pfpf, n*ones(1, J), zeros(1, J), 'x');
-    end
-    
-    if use_cf1
-        x_cf1 = sys_cf1(n+1).x;
-        plot3(x_cf1, n*ones(1, J), zeros(1, J), 'o');
-    end
-
-    if use_cf
-        x_cf = sys_cf(n+1).x;
-        plot3(x_cf, n*ones(1, J), zeros(1, J), '*');
-    end
-end
-end
-
-% Iterate through all posteriors (slightly easier to see the differences
-% than in the waterfall plot).
-for n = 1:N
+    % Posterior
     figure(3); clf();
     if use_gridf
         plot(xg, w(n, :, k)); hold on; grid on;
@@ -461,48 +427,46 @@ for n = 1:N
         x_bpf = sys_bpf(n+1).x;
         plot(x_bpf, 0*ones(1, J), '.'); hold on; grid on;
     end
+    
+    if use_gf
+        x_gf = sys_gf(n+1).x;
+        plot(x_gf, 0.025*ones(1, J), 'x');
+    end
 
     if use_pfpf
         x_pfpf = sys_pfpf(n+1).x;
-        plot(x_pfpf, 0.025*ones(1, J), 'x');
+        plot(x_pfpf, 0.05*ones(1, J), 'o');
     end
-    
+
     if use_cf1
         x_cf1 = sys_cf1(n+1).x;
-        plot(x_cf1, 0.05*ones(1, J), 'o');
+        plot(x_cf1, 0.075*ones(1, J), '*');
     end
 
     if use_cf
         x_cf = sys_cf(n+1).x;
-        plot(x_cf, 0.075*ones(1, J), '*');
+        plot(x_cf, 0.1*ones(1, J), '^');
     end
-
-%     set(gca, 'YScale', 'log');
-    legend('Grid', 'True state', 'BPF', 'PFPF', 'CF1', 'ICE-CF');
+    legend('Grid', 'True state', 'BPF', 'GF', 'PFPF', 'CF1', 'ICE-CF');
     title(sprintf('Posterior and particles at n = %d', n));
-%     ylim([0, 0.1]);
-    
-    %% Plot OID for a particular particle
-    % TODO:
-    % * We need to find an instance where the OID is bi-modal
-    % * Then we need to find two particles on either side of the modes
-    % * Then we need to calculate the OID
-    if 0 %use_cf % TODO: replace by cf instead of cf1
-        j = 1;
+    % ylim([0, 0.1]);
+
+    % OID for a particular particle
+    if use_cf
         % Get ancestor particle and proposal
+        j = 1;
         xnj = sys_cf(n).x(:, sys_cf(n+1).alpha(j));
-        qj = sys_cf(n+1).q(j);
-        
-        
+        qj = sys_cf(n+1).qstate(j);
+
         lpx = model.px.logpdf(xg, xnj, theta(:, n));
         px = exp(lpx);
-        
+
         lpy = model.py.logpdf(ys(:,  n, k), xg, theta(:, n));
         py = exp(lpy);
 
         lp_oid = lpy + lpx;
         p_oid = exp(lp_oid)/(sum(exp(lp_oid))*mean(diff(xg)));
-        
+
         p_cf1 = normpdf(xg, qj.mp(2), sqrt(qj.Pp(:, :, 2)));
         p_cf = normpdf(xg, qj.mp(qj.l+1), sqrt(qj.Pp(:, :, qj.l+1)));
 
@@ -514,26 +478,45 @@ for n = 1:N
         plot(xg, p_cf, '--');
         plot(xnj, 0, '*');
         legend('OID', 'px', 'CF1', 'CF');
-
         title(sprintf('OID approximation for particle %d from %d to %d', j, n-1, n));
     end
-    
-    %% 
+
     pause();
 end
 
-if 0
-% Mean ESS
-figure(5); clf();
-plot(mean(ess_bpf, 3)); hold on; grid on;
-plot(mean(ess_cf1, 3));
-plot(mean(ess_cf, 3));
-legend('BPF', 'CF1', 'ICE-PF (CF)');
-title('Effective sample size');
-end
-end
+%% [debug]
+% Plot the posterior in a waterfall plot, together with the state trace and
+% particles (for the kth MC run)
+if plots && 0
+    figure(3); clf();
+    waterfall(xg, 1:N, w(:, :, k)); hold on; grid on;
+    plot(xs(:, :, k), 1:N, '--r', 'LineWidth', 2);
 
-%% Store results
+    for n = 1:N
+        if use_bpf
+            x_bpf = sys_bpf(n+1).x;
+            plot3(x_bpf, n*ones(1, J), zeros(1, J), '.');
+        end
+
+        if use_pfpf
+            x_pfpf = sys_pfpf(n+1).x;
+            plot3(x_pfpf, n*ones(1, J), zeros(1, J), 'x');
+        end
+
+        if use_cf1
+            x_cf1 = sys_cf1(n+1).x;
+            plot3(x_cf1, n*ones(1, J), zeros(1, J), 'o');
+        end
+
+        if use_cf
+            x_cf = sys_cf(n+1).x;
+            plot3(x_cf, n*ones(1, J), zeros(1, J), '*');
+        end
+    end
+end
+% [/debug]
+    
+%% [debug] Store results
 % Do this before the plots so that we don't store a bunch of temporary
 % variables that we don't need
 if store
@@ -548,3 +531,4 @@ if store
     outfile = sprintf('Save/iploid_ungm/example_ungm_J=%d_L=%d_K=%d_N=%d.mat', J, L, K, N);
     save(outfile);
 end
+% [/debug]

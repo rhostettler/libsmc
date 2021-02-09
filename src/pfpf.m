@@ -64,7 +64,7 @@ function [xhat, sys] = pfpf(model, y, theta, J, par)
 % * Code optimizations should be considered at some point (at least the
 %   no. of loops in the sampling function can be reduced.
 % * Enable choice of flow type (EDH/LEDH) through par.
-% * Consider how to re-integrate this into the original `pf` function.
+% * Integrate this into the `pf` function.
 
     %% Defaults
     narginchk(2, 5);
@@ -79,7 +79,8 @@ function [xhat, sys] = pfpf(model, y, theta, J, par)
     end
     def = struct( ...
         'L', 10, ...
-        'resample', @resample_ess ...
+        'resample', @resample_ess, ...
+        'ukf', [] ...
     );
     par = parchk(par, def);
 %     modelchk(model);

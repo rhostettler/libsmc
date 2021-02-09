@@ -34,7 +34,6 @@ function alpha = resample_stratified(w)
 %}
 
 % TODO:
-% * Check that it really is stratified resampling.
 % * Get rid of the outer loop
 
     narginchk(1, 1);
