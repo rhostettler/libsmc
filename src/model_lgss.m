@@ -1,4 +1,4 @@
-function model = model_lgssm(F, Q, G, R, m0, P0)
+function model = model_lgss(F, Q, G, R, m0, P0)
 % # Linear Gaussian state-space model
 % ## Usage
 % * `model = MODEL_LGSSM(F, Q, G, R, m0, P0)`
@@ -50,6 +50,7 @@ function model = model_lgssm(F, Q, G, R, m0, P0)
 % TODO:
 % * Functionalization is not fully solved yet; should be passed to mvn_pdf
 %   directly instead.
+% * Should also add things like log-gradient and log-Hessian.
 
     %% Defaults
     narginchk(6, 6);
