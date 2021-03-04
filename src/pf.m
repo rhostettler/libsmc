@@ -90,7 +90,7 @@ function [xhat, sys] = pf(model, y, theta, J, par)
     end
     def = struct( ...
         'sample', @sample_bootstrap, ...
-        'calculate_incremental_weights', @calculate_incremental_weights_generic ...
+        'calculate_weights', @calculate_weights_bootstrap ...
     );
     par = parchk(par, def);
 %     modelchk(model);
@@ -136,16 +136,17 @@ function [xhat, sys] = pf(model, y, theta, J, par)
         [xp, alpha, lq, qstate] = par.sample(model, y(:, n), x, lw, theta(:, n));
         
         % Calculate and normalize weights
-        lv = par.calculate_incremental_weights(model, y(:, n), xp, x(:, alpha), theta(:, n), lq);
-        lw = lw(alpha)+lv;
+        lw = par.calculate_weights(model, y(:, n), xp, alpha, lq, x, lw, theta(:, n));
         lw = lw-max(lw);
         w = exp(lw);
         w = w/sum(w);
         lw = log(w);
-        x = xp;
         if any(~isfinite(w))
             warning('libsmc:warning', 'NaN/Inf in particle weights.');
         end
+        
+        % Update state
+        x = xp;
         
         %% Point Estimate(s)
         % Note: We don't have a state estimate for the initial state (in

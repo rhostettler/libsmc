@@ -1,7 +1,7 @@
-function lv = calculate_incremental_weights_bootstrap(model, y, xp, ~, theta, ~)
+function lv = calculate_weights_bootstrap(model, y, xp, ~, ~, ~, ~, theta)
 % # Incremental particle weights for the bootstrap particle filter
 % ## Usage
-% * `lv = calculate_incremental_weights_bootstrap(model, y, xp, ~, theta, ~)`
+% * `lv = calculate_weights_bootstrap(model, y, xp, alpha, lq, x, lw, theta)`
 %
 % ## Description
 % Calculates the incremental particle weights for the bootstrap particle
@@ -14,16 +14,20 @@ function lv = calculate_incremental_weights_bootstrap(model, y, xp, ~, theta, ~)
 %
 % ## Input
 % * `model`: State-space model struct.
-% * `y`: Measurement y[n].
-% * `xp`: Particles at time t[n] (i.e. x[n]).
-% * `x`: Particles at time t[n-1] (i.e. x[n-1]).
-% * `theta`: Model parameters.
+% * `y`: dy-times-1 measurement vector y[n].
+% * `xp`: dx-times-J matrix of newly drawn particles for the state x[n].
+% * `alpha`: 1-times-J vector of ancestor indices for the state x[n].
+% * `lq`: 1-times-J vector of importance density evaluations at 
+%   {`xp(:, j)`, `alpha(j)`}.
+% * `x`: dx-times-J matrix of previous state particles x[n-1].
+% * `lw`: 1-times-J matrix of trajectory weights up to n-1.
+% * `theta`: Additional parameters.
 %
 % ## Output
 % * `lv`: The non-normalized log-weights.
 %
 % ## Author
-% 2017-present -- Roland Hostettler <roland.hostettler@angstrom.uu.se>
+% 2021-present -- Roland Hostettler <roland.hostettler@angstrom.uu.se>
 
 %{
 % This file is part of the libsmc Matlab toolbox.
@@ -42,7 +46,7 @@ function lv = calculate_incremental_weights_bootstrap(model, y, xp, ~, theta, ~)
 % with libsmc. If not, see <http://www.gnu.org/licenses/>.
 %}
 
-    narginchk(6, 6);
+    narginchk(8, 8);
     J = size(xp, 2);
     py = model.py;
     if py.fast
