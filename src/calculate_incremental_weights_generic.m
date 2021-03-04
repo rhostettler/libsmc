@@ -1,7 +1,7 @@
-function lv = calculate_incremental_weights_generic(model, y, xp, x, theta, lqx)
+function lv = calculate_incremental_weights_generic(model, y, xp, x, theta, lq)
 % # General incremental weights for sequential importance sampling
 % ## Usage
-% * `lv = calculate_incremental_weights_generic(model, y, xp, x, theta, lqx)`
+% * `lv = calculate_incremental_weights_generic(model, y, xp, x, theta, lq)`
 %
 % ## Description
 % Calculates the incremental importance weight for sequential importance
@@ -13,8 +13,8 @@ function lv = calculate_incremental_weights_generic(model, y, xp, x, theta, lqx)
 % * `xp`: dx-times-J matrix of newly drawn particles for the state x[n].
 % * `x`: dx-times-J matrix of previous state particles x[n-1].
 % * `theta`: Additional parameters.
-% * `lqx`: 1-times-J vector of importance density evaluations at 
-%   `xp(:, j)`.
+% * `lq`: 1-times-J vector of importance density evaluations at 
+%   {`xp(:, j)`, `alpha(j)`}.
 %
 % ## Output
 % * `lv`: Logarithm of incremental weights.
@@ -51,14 +51,14 @@ function lv = calculate_incremental_weights_generic(model, y, xp, x, theta, lqx)
         lv = ( ...
             py.logpdf(y*ones(1, J), xp, theta) ...
             + px.logpdf(xp, x, theta) ...
-            - lqx ...
+            - lq ...
         );
     else
         for j = 1:J
             lv(j) = ( ...
                 py.logpdf(y, xp(:, j), theta) ...
                 + px.logpdf(xp(:, j), x(:, j), theta) ...
-                - lqx(j) ...
+                - lq(j) ...
             );
         end
     end
