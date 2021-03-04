@@ -1,8 +1,8 @@
-function [alpha, lw, state] = resample_ess(lw, par)
+function [alpha, lalpha, state] = resample_ess(lw, par)
 % # Effective sample size-based conditional resampling
 % ## Usage
-% * `[alpha, lw, state] = resample_ess(lw)`
-% * `[alpha, lw, state] = resample_ess(lw, par)`
+% * `[alpha, lalpha, state] = resample_ess(lw)`
+% * `[alpha, lalpha, state] = resample_ess(lw, par)`
 %
 % ## Description
 % Conditional resampling function using an estimate of the effecitve sample
@@ -24,7 +24,7 @@ function [alpha, lw, state] = resample_ess(lw, par)
 %
 % ## Output
 % * `alpha`: Resampled indices.
-% * `lw`: Log-weights.
+% * `lalpha`: Log-weights.
 % * `state`: Resampling state, contains the following fields:
 %     - `ess`: Effective sample size.
 %     - `r`: Resampling indicator (`true` if resampled, `false` otherwise).
@@ -49,9 +49,6 @@ function [alpha, lw, state] = resample_ess(lw, par)
 % with libsmc. If not, see <http://www.gnu.org/licenses/>.
 %}
 
-% TODO:
-% * Make this fit for APF-like interfaces. Needs to be done, of course.
-
     %% Defaults
     narginchk(1, 2);
     if nargin < 2
@@ -69,9 +66,12 @@ function [alpha, lw, state] = resample_ess(lw, par)
     Jess = 1/sum(w.^2);
     r = (Jess < par.Jt);
     alpha = 1:J;
+    lalpha = log(1/J)*ones(1, J);
     if r
+        % ESS is too low: Sample according to the categorical distribution
+        % defined by the sample weights w, alpha ~ Cat{w}
         alpha = par.resample(w);
-        lw = log(1/J)*ones(1, J);
+        lalpha = lw(alpha);
     end
     state = struct('r', r, 'ess', Jess);
 end

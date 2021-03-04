@@ -1,7 +1,8 @@
-function [xp, lqx, qstate] = sample_bootstrap(model, ~, x, theta)
+function [xp, alpha, lq, qstate] = sample_bootstrap(model, ~, x, lw, theta, par)
 % # Sample from the bootstrap importance density
 % ## Usage
-% * `[xp, lqx, qstate] = sample_bootstrap(model, y, x, theta)`
+% * `[xp, alpha, lq, qstate] = sample_bootstrap(model, y, x, lw, theta)`
+% * `[xp, alpha, lq, qstate] = sample_bootstrap(model, y, x, lw, theta, par)`
 %
 % ## Description
 % Samples a set of new samples x[n] from the bootstrap importance density,
@@ -13,13 +14,15 @@ function [xp, lqx, qstate] = sample_bootstrap(model, ~, x, theta)
 % * `model`: State-space model struct.
 % * `y`: Measurement vector y[n].
 % * `x`: Samples at x[n-1].
+% * `lw`: Log-weights of x[n-1].
 % * `theta`: Model parameters.
+% * `par`: Struct of additional parameters (resampling function).
 %
 % ## Output
 % * `xp`: The new samples x[n].
-% * `lqx`: 1-times-J vector of the importance density evaluated at 
-%   `xp(:, j)`.
-% * `qstate`: Empty.
+% * `alpha`: The ancestor indices of x[n].
+% * `lq`: 1-times-J vector of the importance density of the jth sample.
+% * `qstate`: Sampling algorithm state information, see `resample_ess`.
 %
 % ## Author
 % 2018-present -- Roland Hostettler <roland.hostettler@angstrom.uu.se>
@@ -46,10 +49,24 @@ function [xp, lqx, qstate] = sample_bootstrap(model, ~, x, theta)
 %   case and then pass this to sample_generic, now that we have to redefine
 %   the sampling density anyway.
 
-    narginchk(4, 4);
+    %% Defaults
+    narginchk(5, 6);
+    if nargin < 6 || isempty(par)
+        par = struct();
+    end
+    defaults = struct( ...
+        'resample', @resample_ess ...
+    );
+    par = parchk(par, defaults);
+
+    %% Sampling   
+    % Sample ancestor indices (resampling)
+    [alpha, lqalpha, qstate] = par.resample(lw);
+    x = x(:, alpha);
+    
+    % Sample
     [dx, J] = size(x);
     lqx = zeros(1, J);
-    qstate = [];
     px = model.px;
     if px.fast
         xp = px.rand(x, theta);
@@ -61,4 +78,7 @@ function [xp, lqx, qstate] = sample_bootstrap(model, ~, x, theta)
             lqx(j) = px.logpdf(xp(:, j), x(:, j), theta);
         end
     end
+    
+    % Importance density evaluated at {xp(j), alpha(j)}.
+    lq = lqx+lqalpha;
 end

@@ -72,17 +72,10 @@ function [xhat, sys] = pf(model, y, theta, J, par)
 % * Add possibility of adding output function (see gibbs_pmcmc())
 % * Add possibility of calculating arbitrary MC integrals based on the
 %   marginal filtering density; defaults to mean.
-% * In order to make it more generic (i.e., make it fit for APF), the
-%   resampling-function should return the (log-)weights used for resampling
-%   and calculate_incremental_weights should take these weights as an
-%   input.
-%   Update 2019-09-16: Actually, then we will again suffer from the problem
-%   that we have to calculate the importance density twice, e.g., when
-%   using a Gaussian density. Hence, we should find a better way of doing
-%   that.
-% * Default to calculate_incremental_weights_generic() rather than
-%   bootstrap? Seems to be the more common case nowadays.
 % * Remove unnecessary incremental weight calculation functions
+% * Many of the sampling functions are broken due to the recent changes in
+%   the interface of the sampling function (integration of resampling
+%   function).
 
     %% Defaults
     narginchk(2, 5);
@@ -97,8 +90,7 @@ function [xhat, sys] = pf(model, y, theta, J, par)
     end
     def = struct( ...
         'sample', @sample_bootstrap, ...
-        'resample', @resample_ess, ...
-        'calculate_incremental_weights', @calculate_incremental_weights_bootstrap ...
+        'calculate_incremental_weights', @calculate_incremental_weights_generic ...
     );
     par = parchk(par, def);
 %     modelchk(model);
@@ -140,13 +132,12 @@ function [xhat, sys] = pf(model, y, theta, J, par)
     %% Process Data
     for n = 2:N
         %% Update
-        % (Re-)Sample
-        [alpha, lw, rstate] = par.resample(lw);
-        [xp, lqx, qstate] = par.sample(model, y(:, n), x(:, alpha), theta(:, n));
+        % Sample
+        [xp, alpha, lq, qstate] = par.sample(model, y(:, n), x, lw, theta(:, n));
         
         % Calculate and normalize weights
-        lv = par.calculate_incremental_weights(model, y(:, n), xp, x(:, alpha), theta(:, n), lqx);
-        lw = lw+lv;
+        lv = par.calculate_incremental_weights(model, y(:, n), xp, x(:, alpha), theta(:, n), lq);
+        lw = lw(alpha)+lv;
         lw = lw-max(lw);
         w = exp(lw);
         w = w/sum(w);
@@ -167,7 +158,6 @@ function [xhat, sys] = pf(model, y, theta, J, par)
             sys(n).x = x;
             sys(n).w = w;
             sys(n).alpha = alpha;
-            sys(n).rstate = rstate;
             sys(n).qstate = qstate;
         end
     end
