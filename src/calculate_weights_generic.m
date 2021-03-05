@@ -23,10 +23,7 @@ function lv = calculate_weights_generic(model, y, xp, alpha, lq, x, lw, theta)
 % * `theta`: Additional parameters.
 %
 % ## Output
-% * `lv`: Logarithm of updated weights.
-%
-% ## See also
-% sample_generic
+% * `lv`: 1-times-J vector of logarithm of updated weights.
 %
 % ## Authors
 % 2021-present -- Roland Hostettler <roland.hostettler@angstrom.uu.se>

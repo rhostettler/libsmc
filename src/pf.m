@@ -20,21 +20,19 @@ function [xhat, sys] = pf(model, y, theta, J, par)
 %   parameters (default: `[]`).
 % * `J`: Number of particles (default: 100).
 % * `par`: Struct of additional (optional) parameters:
-%     - `[alpha, lw, r] = resample(lw)`: Function handle to the resampling 
-%       function. The input `lw` is the log-weights and the function must 
-%       return the indices of the resampled particles (`alpha`), the log-
-%       weights of the resampled (`lw`) particles, as well as a boolean
-%       indicating whether resampling was performed or not (`r`). Default:
-%       `@resample_ess`.
-%     - `[xp, lqx, qstate] = sample(model, y, x, theta)`: Function handle 
-%       to the sampling function to draw new state vectors. The output are 
-%       the new samples `xp` as well as the importance density evaluated at
-%       each `xp(:, j)`. Additionally, the sampling function may return 
-%       state information in `qstate`. Default: `@sample_bootstrap`.
-%     - `lv = calculate_incremental_weights(model, y, xp, x, theta)`:
-%       Function to calculate the weight increment `lv`. This function must
-%       match the `sample` function. Default:
-%       `@calculate_incremental_weights_bootstrap`.
+%     - `[xp, alpha, lq, qstate] = sample(model, y, x, lw, theta)`:
+%       Function handle to the sampling function to resample the 
+%       trajectories and draw new state vectors. The output are 
+%       the new samples `xp`, the ancestor indices `alpha`, as well as the 
+%       importance density evaluated at each {`xp(:, j)`, `alpha(j)`} in 
+%       `lq`. Additionally, the sampling function may return sampler state
+%       information in `qstate`. Default: `@sample_bootstrap`.
+%     - `lw = calculate_weights(model, y, xp, alpha, lq, x, lw, theta)`:
+%       Function to calculate the log-weights `lw`. Typically, the function
+%       `calculate_weights_generic()` can be used, but certain importance
+%       densities simplify the weight calculation, and taylored importance
+%       weight calculation functions may speed up computations. Default: 
+%       `@calculate_weights_bootstrap`.
 %
 % ## Output
 % * `xhat`: Minimum mean squared error filter state estimate (calculated 
@@ -44,9 +42,9 @@ function [xhat, sys] = pf(model, y, theta, J, par)
 %       density.
 %     - `w`: 1-times-J vector of the particle weights for the marginal
 %       filtering density.
-%      - `xf`: dx-times-J vector of state trajectory samples.
+%     - `xf`: dx-times-J vector of state trajectory samples.
 %     - `alpha`: 1-times-J vector of ancestor indices.
-%     - `rstate`: Resampling algorithm state.
+%     - `qstate`: Sampling algorithm state.
 %
 % ## Authors
 % 2018-present -- Roland Hostettler
@@ -72,10 +70,6 @@ function [xhat, sys] = pf(model, y, theta, J, par)
 % * Add possibility of adding output function (see gibbs_pmcmc())
 % * Add possibility of calculating arbitrary MC integrals based on the
 %   marginal filtering density; defaults to mean.
-% * Remove unnecessary incremental weight calculation functions
-% * Many of the sampling functions are broken due to the recent changes in
-%   the interface of the sampling function (integration of resampling
-%   function).
 
     %% Defaults
     narginchk(2, 5);
@@ -124,7 +118,6 @@ function [xhat, sys] = pf(model, y, theta, J, par)
         sys(1).x = x;
         sys(1).w = exp(lw);
         sys(1).alpha = 1:J;
-        sys(1).rstate = struct('r', false, 'ess', J);
         sys(1).qstate = [];
     end
     xhat = zeros(dx, N-1);

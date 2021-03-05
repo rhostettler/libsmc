@@ -80,6 +80,7 @@ function [xp, lqx, qstate] = sample_gaussian_flow(model, y, x, theta, f, Q, g, G
 
     %% Defaults
     narginchk(10, 11);
+    error('Broken due to changes in pf. Please fix resampling and weight handling.');
     if nargin < 11 || isempty(L)
         L = 5;
     end

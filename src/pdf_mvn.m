@@ -89,4 +89,8 @@ function py = pdf_mvn(dy, m, P, fast)
     else
         error('Something went wrong while initializing pdf struct, check your mean and covariance functions.');
     end
+    
+    %% Add mean and covariance functions
+    py.mean = m;
+    py.cov = P;
 end

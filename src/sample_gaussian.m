@@ -1,8 +1,8 @@
-function [xp, lqx, qstate] = sample_gaussian(model, y, x, theta, f, Q, slr, L, kappa, epsilon)
+function [xp, lqx, qstate] = sample_gaussian(model, y, x, theta, slr, L, kappa, epsilon)
 % # Gaussian approximation to optimal importance density
 % ## Usage
-% * `[xp, lqx] = sample_gaussian(model, y, x, theta, f, Q, slr)`
-% * `[xp, lqx, qstate] = sample_gaussian(model, y, x, theta, f, Q, slr, L, kappa, epsilon)`
+% * `[xp, lqx] = sample_gaussian(model, y, x, theta, slr)`
+% * `[xp, lqx, qstate] = sample_gaussian(model, y, x, theta, slr, L, kappa, epsilon)`
 %
 % ## Description
 % Calculates the Gaussian approximation of the joint distribution
@@ -61,10 +61,6 @@ function [xp, lqx, qstate] = sample_gaussian(model, y, x, theta, f, Q, slr, L, k
 % ## Authors
 % 2019-present -- Roland Hostettler
 
-% TODO:
-% * f, Q and the like should be taken from the model rather than as
-%   additional parameters.
-
 %{
 % This file is part of the libsmc Matlab toolbox.
 %
@@ -84,6 +80,7 @@ function [xp, lqx, qstate] = sample_gaussian(model, y, x, theta, f, Q, slr, L, k
 
     %% Defaults
     narginchk(7, 10);
+    error('Broken due to changes in pf. Please fix resampling and weight handling.');
     [dx, J] = size(x);
     dy = size(y, 1);
     if nargin < 8 || isempty(L)
@@ -96,7 +93,7 @@ function [xp, lqx, qstate] = sample_gaussian(model, y, x, theta, f, Q, slr, L, k
     if nargin < 10 || isempty(epsilon)
         epsilon = 1e-2;
     end
-
+    
     %% Sample and calculate incremental weights
     % Preallocate
     xp = zeros(dx, J);
@@ -106,6 +103,10 @@ function [xp, lqx, qstate] = sample_gaussian(model, y, x, theta, f, Q, slr, L, k
     dkls = zeros(1, L);
     mps = zeros(dx, L+1);
     Pps = zeros(dx, dx, L+1);
+
+    % Get mean and covariance functions
+    f = model.px.mean;
+    Q = model.px.cov;
     
     % For all particles...
     for j = 1:J
@@ -147,7 +148,7 @@ function [xp, lqx, qstate] = sample_gaussian(model, y, x, theta, f, Q, slr, L, k
             [Lt, nd] = chol(Pt, 'lower');
             if nd || ((y - my)'/Py*(y - my) >= gamma)
                 done = true;
-                warning('libsmc:warning', 'Posterior approximation failed (l = %d), sampling from prior.', l);
+%                 warning('libsmc:warning', 'Posterior approximation failed (l = %d), sampling from prior.', l);
             else
                 % Change in KL divergence
                 dkls(l) = (trace(Pt\Pp) - log(det(Pp)) + log(det(Pt)) - dx + (mt - mp)'/Pt*(mt - mp))/2;

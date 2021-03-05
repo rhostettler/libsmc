@@ -45,7 +45,7 @@ function sys = initialize_sys(N, dx, J)
             'x', zeros(dx, J), ...    % Marginal filtering density particles
             'w', zeros(1, J), ...     % Marginal filtering density weights
             'alpha', zeros(1, J), ... % Ancestor indices
-            'rstate', struct() ...    % Resampling algorithm state
+            'qstate', struct() ...    % Sampling algorithm state
         ), ...
         [N, 1] ...
     );

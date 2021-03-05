@@ -45,6 +45,7 @@ function [xp, lqx, qstate] = sample_generic(model, y, x, theta, q)
 %}
 
     narginchk(5, 5);
+    error('Broken due to changes in pf. Please fix resampling and weight handling.');
     [dx, J] = size(x);
     qstate = [];
     if q.fast

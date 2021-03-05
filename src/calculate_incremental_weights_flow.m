@@ -51,5 +51,6 @@ function lv = calculate_incremental_weights_flow(model, y, xp, x, theta, lqx)
 %   slightly (in sample_gaussian_flow()).
 
     narginchk(6, 6);
+    error('Broken due to changes in pf. Please fix resampling and weight handling.');
     lv = lqx;
 end
