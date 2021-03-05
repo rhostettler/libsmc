@@ -51,15 +51,10 @@ function [xhat, sys] = smcmc(model, y, theta, J, par)
         par = struct();
     end
     def = struct( ...
-        'sample', @sample_prior, ...
-        'Jburnin', round(0.1*J), ...
-        'Jmixing', 1 ...
+        'sample', @sample_prior ...
     );
     par = parchk(par, def);
-    
-    % Calculate the no. of Monte Carlo iterations
-    Jmcmc = par.Jburnin + 1 + (J-1)*par.Jmixing;
-    
+        
     %% Initialize
     % Sample initial particles
     x = model.px0.rand(J);
@@ -87,20 +82,15 @@ function [xhat, sys] = smcmc(model, y, theta, J, par)
         sys = initialize_sys(N, dx, J);
         sys(1).x = x;
         sys(1).alpha = 1:J;
-        sys(1).rate = 1;
+        sys(1).qstate = 1;
     end
     xhat = zeros(dx, N-1);
     
     %% Process data
     for n = 2:N
-        [xp, alphap, qstate] = par.sample(model, y(:, n), x, theta(:, n), Jmcmc);
+        [x, alpha, qstate] = par.sample(model, y(:, n), x, theta(:, n));
 
         %% Post-processing
-        % Remove burn-in and mixing
-        j = 1+(par.Jburnin+1:par.Jmixing:Jmcmc);
-        alpha = alphap(:, j);
-        x = xp(:, j);
-
         % Point estimate (MMSE)
         xhat(:, n-1) = mean(x, 2);
         
@@ -122,6 +112,7 @@ end
 function [xn, alphan, qstate] = sample_prior(model, y, x, theta, Jmcmc)
 % TODO: Move this out of smcmc
 
+    error('Burn-in and mixing should be handled inside here!');
     [dx, J] = size(x);
     xn = zeros(dx, Jmcmc);
     

@@ -101,8 +101,8 @@ function [xhat, sys] = pf(model, y, theta, J, par)
     y = [NaN*ones(dy, 1), y];
     
     % Expand 'theta' to the appropriate size, such that we can use
-    % 'theta(n)' as an argument to the different functions (if not already
-    % expanded).
+    % 'theta(:, n)' as an argument to the different functions (if not 
+    % already expanded).
     [dtheta, Ntheta] = size(theta);
     if Ntheta == 1
         theta = theta*ones(1, N);
@@ -122,7 +122,7 @@ function [xhat, sys] = pf(model, y, theta, J, par)
     end
     xhat = zeros(dx, N-1);
     
-    %% Process Data
+    %% Process data
     for n = 2:N
         %% Update
         % Sample
