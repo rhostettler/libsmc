@@ -1,12 +1,35 @@
-function [xn, alpha, qstate] = sample_composite(model, y, x, theta, par)
+function [xn, alpha, lq, qstate] = sample_smcmc_composite(model, y, x, ~, theta, par)
 % # Sample from a composite sequential MCMC kernel
 % ## Usage
+% * `[xn, alpha, lq, qstate] = sample_smcmc_composite(model, y, x, lw, theta, par)`
 %
 % ## Description
+% Composite sequential Markov chain Monte Carlo kernel. In particular,
+% samples are drawn according to the following strategy (`alpha`: ancestor 
+% index, i.e., trajectory `x[0:n-1]`; `xn`: new sample):
+%
+% 1. Jointly sample {`alpha(j)`, `xn(j)`};
+% 2. Use Metropolis-within-Gibbs to refine `alpha(j)` given `xn(j)`;
+% 3. Use Metropolis-within-Gibbs to refine `xn(j)` given `alpha(j)`.
 %
 % ## Input
-%
+% * `model`: State-space model struct.
+% * `y`: Measurement vector y[n].
+% * `x`: Samples at x[n-1].
+% * `lw`: Log-weights of x[n-1] (unused; for compatibility only).
+% * `theta`: Model parameters.
+% * `par`: Struct of additional parameters:
+%   - `Jburnin`: No. of burn-in samples (default: 10 % of J).
+%   - `Jmixing`: No. of mixing samples (default: 0).
+%   - `L`: No. of refinement steps in the Metropolis-within-Gibbs steps
+%     (default: 1).
+%   - `epsilon`: MALA integration step (default: 0.1).
+% 
 % ## Output
+% * `xn`: The new samples x[n].
+% * `alpha`: The ancestor indices of x[n].
+% * `lq`: 1-times-J vector of the importance density of the jth sample.
+% * `qstate`: Sampling algorithm state information.
 %
 % ## Author
 % 2020-present -- Roland Hostettler
@@ -29,17 +52,13 @@ function [xn, alpha, qstate] = sample_composite(model, y, x, theta, par)
 %}
 
 % TODO:
-% * Add proper documentation; should clearly describe how sampling is
-%   performed to make sure that we remember later on.
-% * We should be able to choose the refinement kernel.
-% * If we're going to make it compatible with `pf` (i.e., we remove smcmc),
-%   we'll have to make sure that we comply with that interface.
-% * Allow for different joint draws (independent but with different draw
-%   for x[n]).
+% * Add possibility of changing joint draw (independent but with different 
+%   draw for x[n]).
+% * Add possibility of choosing refiniment kernels (MALA, GRW, etc.)
 
     %% Defaults
-    narginchk(4, 5);
-    if nargin < 5 || isempty(par)
+    narginchk(5, 6);
+    if nargin < 6 || isempty(par)
         par = struct();
     end
     [dx, J] = size(x);
@@ -105,6 +124,7 @@ function [xn, alpha, qstate] = sample_composite(model, y, x, theta, par)
         % Metropolis-within-Gibbs
         p = @(xp) model.py.logpdf(y, xp, theta) + model.px.logpdf(xp, x(:, alpha(j)), theta);
 
+        % TODO: Make this configurable
         if 1
             % MALA
             G = @(xp) ( ...
@@ -135,8 +155,7 @@ function [xn, alpha, qstate] = sample_composite(model, y, x, theta, par)
     j = 1+(par.Jburnin+1:par.Jmixing:Jmcmc);
     alpha = alpha(j);
     xn = xn(:, j);
+    lq = -log(J)*ones(1, J);
     
-    if nargout > 2
-        qstate = struct('rate_alpha', rate_alpha, 'rate_x', rate_x);
-    end
+    qstate = struct('rate_alpha', rate_alpha, 'rate_x', rate_x);
 end

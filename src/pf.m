@@ -7,7 +7,7 @@ function [xhat, sys] = pf(model, y, theta, J, par)
 % ## Description
 % `pf` is a generic sequential importance sampling with resampling particle
 % filter (PF). It can be used as anything ranging from the bootstrap PF to
-% the auxiliary particle filter.
+% the auxiliary particle filter and even sequential MCMC methods.
 %
 % In its minimal form, a bootstrap particle filter with conditional
 % resampling based on the effective sample size with `J = 100` particles is
@@ -129,7 +129,11 @@ function [xhat, sys] = pf(model, y, theta, J, par)
         [xp, alpha, lq, qstate] = par.sample(model, y(:, n), x, lw, theta(:, n));
         
         % Calculate and normalize weights
-        lw = par.calculate_weights(model, y(:, n), xp, alpha, lq, x, lw, theta(:, n));
+        if ~isempty(par.calculate_weights)
+            lw = par.calculate_weights(model, y(:, n), xp, alpha, lq, x, lw, theta(:, n));
+        else
+            lw = -log(J)*ones(1, J);
+        end
         lw = lw-max(lw);
         w = exp(lw);
         w = w/sum(w);
@@ -156,7 +160,7 @@ function [xhat, sys] = pf(model, y, theta, J, par)
         end
     end
     
-    %% Calculate Joint Filtering Density
+    %% Calculate joint filtering density
     if return_sys
         sys = calculate_particle_lineages(sys);
     end
