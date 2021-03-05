@@ -135,7 +135,7 @@ function [xn, alpha, qstate] = sample_composite(model, y, x, theta, Jmcmc, par)
         xn(:, j) = xp(:, L);
     end
     
-    alpha = 1:J; % TODO: this is not correct, see TODO above.
+    alpha = 1:Jmcmc+1; % TODO: this is not correct, see TODO above.
     
     %% 
     if nargout > 2
