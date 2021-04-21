@@ -9,7 +9,6 @@ function [shat, zhat, sys] = rbps(model, y, theta, Jf, Js, par, sys)
 % 
 % 
 
-
 % TODO:
 % * Only hierarchical model implemented right now
 % * No testcase implemented
@@ -44,12 +43,28 @@ function [shat, zhat, sys] = rbps(model, y, theta, Jf, Js, par, sys)
 
     %% Defaults
     % TODO: Implement proper defaults
-    narginchk(7, 7);
+    narginchk(2, 7);
     if nargin < 3 || isempty(theta)
         theta = NaN;
     end
+    if nargin < 4 || isempty(Jf)
+        % TODO: There's a conflict if sys is provided (no need for
+        % specifying Jf)
+        Jf = 250;
+    end
+    if nargin < 5 || isempty(Js)
+        Js = 100;
+    end
+    if nargin < 6 || isempty(par)
+        par = struct();
+    end
+    def = struct(...
+    	'sample_backward_simulation', @sample_backward_simulation ...
+    );
+    par = parchk(par, def);
 
     % Expand data dimensions, prepend NaN for zero measurement
+    % TODO: This conflicts when sys is provided (we prepend NaN twice)
     [dy, N] = size(y);
     y = [NaN*ones(dy, 1), y];
     
@@ -58,8 +73,15 @@ function [shat, zhat, sys] = rbps(model, y, theta, Jf, Js, par, sys)
         N = size(y, 2);
         theta = theta*ones(1, N);
     end
+    
+    %% Filtering
+    % If no filtered system is provided, run a bootstrap PF first
+    if nargin < 7 || isempty(sys)
+        [~, sys] = rbpf(model, y, theta, Jf);
+    end
 
     %% Preallocate
+    % TODO: Move this to some 'smooth_XXX' function.
     N = length(sys);
     [ds, Jf] = size(sys(N).x);
     dz = size(sys(N).mz, 1);
@@ -104,44 +126,34 @@ function [shat, zhat, sys] = rbps(model, y, theta, Jf, Js, par, sys)
         s = sys(n).x;
         
         for j = 1:Js
-            %% Calculate ancestor weights
-            % (Hierarchical model only for now)
-            % TODO: Check for model.ps.fast
-            for i = 1:Jf
-                lZ(:, i) = model.ps.logpdf(ss(:, j), s(:, i), theta(:, n));
+            %% Sampling
+            % Calculate normalizing constant
+            if model.ps.fast
+                lZ = model.ps.logpdf(ss(:, j)*ones(1, Jf), s, theta(:, n));
+            else
+                for i = 1:Jf
+                    lZ(:, i) = model.ps.logpdf(ss(:, j), s(:, i), theta(:, n));
+                end
             end
             
-            % paper -> libsmc
-            % f -> pz.g
-            % A -> pz.G
-            % F -> chol(pz.Q).'
+            % Calculate sufficient statistics
+            % Notation:
+            % Paper -> libsmc
+            % f     -> pz.g
+            % A     -> pz.G
+            % F     -> chol(pz.Q).'
             gj = model.pz.g(ss(:, j), theta(:, n));
             Gj = model.pz.G(ss(:, j), theta(:, n));
             Fj = chol(model.pz.Q(ss(:, j), theta(:, n))).';
-%             Fj = sqrtm(model.pz.Q(ss(:, j), theta(:, n)));
             mj = lambda_hat(:, j) - Omega_hat(:, :, j)*gj;
             Mj = Fj'*Omega_hat(:, :, j)*Fj + Iz;
             Lj = Gj'*(Iz - Omega_hat(:, :, j)*Fj/Mj*Fj');
             lambda = Lj*mj;
             Omega = Lj*Omega_hat(:, :, j)*Gj;
+            Omega = (Omega + Omega')/2;
             
-            % Lambda^i, eta^i according to (21)
-            for i = 1:Jf
-                mzi = sys(n).mz(:, i);
-                Pzi = sys(n).Pz(:, :, i);
-                Gammai = chol(Pzi).';
-                Lambda = Gammai'*Omega*Gammai + Iz;
-                eta = wnorm(mzi, Omega) - 2*lambda'*mzi ...
-                    - wnorm(Gammai'*(lambda - Omega*mzi), Lambda\Iz);
-                lv(:, i) = -1/2*log(det(Lambda)) - 1/2*eta;
-            end
-                        
-            %% Sample
-            lws = log(sys(n).w) + lZ + lv;
-            ws = exp(lws-max(lws));
-            ws = ws/sum(ws);
-            ir = resample_stratified(ws);
-            beta = ir(randi(Jf, 1));
+            % Sample
+            [beta, state] = par.sample_backward_simulation(model, sys(n), lZ, lambda, Omega, theta(n+1));
             ss(:, j) = s(:, beta);
             
             %% Information filter measurement update
@@ -149,7 +161,8 @@ function [shat, zhat, sys] = rbps(model, y, theta, Jf, Js, par, sys)
             Hj = model.py.H(ss(:, j), theta(:, n));
             Rj = model.py.R(ss(:, j), theta(:, n));
             lambda_hat(:, j) = lambda + Hj'/Rj*(y(:, n) - hj);
-            Omega_hat(:, :, j) = Omega + Hj'/Rj*Hj;
+            Omega_hat_tmp = Omega + Hj'/Rj*Hj;
+            Omega_hat(:, :, j) = (Omega_hat_tmp + Omega_hat_tmp')/2;
             
             %% Store
             sys(n).lambda(:, j) = lambda;
@@ -174,6 +187,35 @@ function [shat, zhat, sys] = rbps(model, y, theta, Jf, Js, par, sys)
     %% Post-processing
     shat = shat(:, 2:N);
     zhat = zhat(:, 2:N);
+end
+
+%% Sampling function
+function [beta, state] = sample_backward_simulation(model, sys, lZ, lambda, Omega, theta)
+    Jf = size(sys.x, 2);
+    lv = zeros(1, Jf);
+    Iz = eye(size(sys.mz, 1));
+    state = [];
+    
+    % Lambda^i, eta^i according to (21)
+    for i = 1:Jf
+        mzi = sys.mz(:, i);
+%           Pzi = sys(n).Pz(:, :, i);
+%           Gammai = chol(Pzi).';
+        Gammai = chol(sys.Pz(:, :, i));
+        Lambda = Gammai'*Omega*Gammai + Iz;
+        eta = mzi'*Omega*mzi - 2*lambda'*mzi ...
+            - (Gammai'*(lambda - Omega*mzi))'/Lambda*(Gammai'*(lambda - Omega*mzi));
+%           eta = wnorm(mzi, Omega) - 2*lambda'*mzi ...
+%              - wnorm(Gammai'*(lambda - Omega*mzi), Lambda\Iz);
+        lv(:, i) = -1/2*log(det(Lambda)) - 1/2*eta;
+    end
+                        
+    %% Sample
+    lws = log(sys.w) + lZ + lv;
+    ws = exp(lws-max(lws));
+    ws = ws/sum(ws);
+    ir = resample_stratified(ws);
+    beta = ir(randi(Jf, 1));
 end
 
 %% Recalculate the linear states
