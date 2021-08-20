@@ -1,7 +1,7 @@
-function lv = calculate_weights_generic(model, y, xp, alpha, lq, x, lw, theta)
+function lv = calculate_weights(model, y, xp, alpha, lq, x, lw, theta)
 % # General weight calculation for sequential importance sampling
 % ## Usage
-% * `lv = calculate_weights_generic(model, y, xp, alpha, lq, x, lw, theta)`
+% * `lv = calculate_weights(model, y, xp, alpha, lq, x, lw, theta)`
 %
 % ## Description
 % Calculates the non-normalized log-weight for sequential importance
