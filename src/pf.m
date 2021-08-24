@@ -20,18 +20,19 @@ function [xhat, sys] = pf(model, y, theta, J, par)
 %   parameters (default: `[]`).
 % * `J`: Number of particles (default: 100).
 % * `par`: Struct of additional (optional) parameters:
-%     - `[xp, alpha, lq, qstate] = sample(model, y, x, lw, theta)`:
+%     - `[xp, alpha, lqx, lqalpha qstate] = sample(model, y, x, lw, theta)`:
 %       Function handle to the sampling function to resample the 
 %       trajectories and draw new state vectors. The output are 
 %       the new samples `xp`, the ancestor indices `alpha`, as well as the 
 %       importance density evaluated at each {`xp(:, j)`, `alpha(j)`} in 
-%       `lq`. Additionally, the sampling function may return sampler state
-%       information in `qstate`. Default: `@sample_bootstrap`.
-%     - `lw = calculate_weights(model, y, xp, alpha, lq, x, lw, theta)`:
+%       `lqx` and `lqalpha`. Additionally, the sampling function may return
+%        sampler state information in `qstate`. Default: 
+%       `@sample_bootstrap`.
+%     - `lw = calculate_weights(model, y, xp, alpha, lqx, lqalpha, x, lw, theta)`:
 %       Function to calculate the log-weights `lw`. Typically, the function
-%       `calculate_weights_generic()` can be used, but certain importance
-%       densities simplify the weight calculation, and taylored importance
-%       weight calculation functions may speed up computations. Default: 
+%       `calculate_weights()` can be used, but certain importance densities
+%       simplify the weight calculation, and taylored importance weight
+%       calculation functions may speed up computations. Default: 
 %       `@calculate_weights_bootstrap`.
 %
 % ## Output
@@ -84,7 +85,8 @@ function [xhat, sys] = pf(model, y, theta, J, par)
     end
     def = struct( ...
         'sample', @sample_bootstrap, ...
-        'calculate_weights', @calculate_weights_bootstrap ...
+...%         'calculate_weights', @calculate_weights_bootstrap ...
+        'calculate_weights', @calculate_weights ...
     );
     par = parchk(par, def);
 %     modelchk(model);
@@ -126,11 +128,11 @@ function [xhat, sys] = pf(model, y, theta, J, par)
     for n = 2:N
         %% Update
         % Sample
-        [xp, alpha, lq, qstate] = par.sample(model, y(:, n), x, lw, theta(:, n));
+        [xp, alpha, lqx, lqalpha, qstate] = par.sample(model, y(:, n), x, lw, theta(:, n));
         
         % Calculate and normalize weights
         if ~isempty(par.calculate_weights)
-            lw = par.calculate_weights(model, y(:, n), xp, alpha, lq, x, lw, theta(:, n));
+            lw = par.calculate_weights(model, y(:, n), xp, alpha, lqx, lqalpha, x, lw, theta(:, n));
         else
             lw = -log(J)*ones(1, J);
         end

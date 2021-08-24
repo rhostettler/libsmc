@@ -1,13 +1,13 @@
-function lv = calculate_weights_bootstrap(model, y, xp, ~, ~, ~, ~, theta)
-% # Incremental particle weights for the bootstrap particle filter
+function lv = calculate_weights_bootstrap(model, y, xp, alpha, lqx, lqalpha, x, lw, theta)
+% # Particle weights for the bootstrap particle filter
 % ## Usage
-% * `lv = calculate_weights_bootstrap(model, y, xp, alpha, lq, x, lw, theta)`
+% * `lv = calculate_weights_bootstrap(model, y, xp, alpha, lqx, lqalpha, x, lw, theta)`
 %
 % ## Description
-% Calculates the incremental particle weights for the bootstrap particle
-% filter. In this case, the incremental weight is given by
+% Calculates the particle weights for the bootstrap particle filter. In 
+% this case, the incremental weight is given by
 %
-%     v[n] ~= p(y[n] | x[n]).
+%     w[n] ~= p(y[n] | x[n])*w[n-1].
 %
 % Note that the function actually computes the non-normalized log weights
 % for numerical stability.
@@ -17,8 +17,10 @@ function lv = calculate_weights_bootstrap(model, y, xp, ~, ~, ~, ~, theta)
 % * `y`: dy-times-1 measurement vector y[n].
 % * `xp`: dx-times-J matrix of newly drawn particles for the state x[n].
 % * `alpha`: 1-times-J vector of ancestor indices for the state x[n].
-% * `lq`: 1-times-J vector of importance density evaluations at 
-%   {`xp(:, j)`, `alpha(j)`}.
+% * `lqx`: 1-times-J vector of importance density evaluations for 
+%   `xp(:, j)`.
+% * `lqalpha`: 1-times-J vector of importance density evaluations for the
+%   ancestor indices `alpha(j)`.
 % * `x`: dx-times-J matrix of previous state particles x[n-1].
 % * `lw`: 1-times-J matrix of trajectory weights up to n-1.
 % * `theta`: Additional parameters.
@@ -46,15 +48,29 @@ function lv = calculate_weights_bootstrap(model, y, xp, ~, ~, ~, ~, theta)
 % with libsmc. If not, see <http://www.gnu.org/licenses/>.
 %}
 
-    narginchk(8, 8);
+    narginchk(9, 9);
     J = size(xp, 2);
-    py = model.py;
-    if py.fast
-        lv = py.logpdf(y*ones(1, J), xp, theta);
+    
+    % Get trajectory weights
+    % TODO: Here's the bug. Needs to be sorted out.
+    lw = lw(alpha);
+    
+    % Incremental weights
+    if model.py.fast
+        lv = model.py.logpdf(y*ones(1, J), xp, theta);
     else
         lv = zeros(1, J);
         for j = 1:J
-            lv(j) = py.logpdf(y, xp(:, j), theta);
+            lv(j) = model.py.logpdf(y, xp(:, j), theta);
         end
     end
+    
+    % Final weight: Incremental weight + trajectory weight - ancestor index
+    % weights
+    %
+    % N.B.:
+    % * If no resampling has taken place, then lqalpha is log(1/J)
+    % * If resampling has taken place, then lqalpha is equal to lw
+    % Thus, lw cancels if resampling has taken place, not otherwise.
+    lv = lv + lw - lqalpha;
 end

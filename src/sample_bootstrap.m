@@ -1,8 +1,8 @@
-function [xp, alpha, lq, qstate] = sample_bootstrap(model, ~, x, lw, theta, par)
+function [xp, alpha, lqx, lqalpha, qstate] = sample_bootstrap(model, ~, x, lw, theta, par)
 % # Sample from the bootstrap importance density
 % ## Usage
-% * `[xp, alpha, lq, qstate] = sample_bootstrap(model, y, x, lw, theta)`
-% * `[xp, alpha, lq, qstate] = sample_bootstrap(model, y, x, lw, theta, par)`
+% * `[xp, alpha, lqx, lqalpha, qstate] = sample_bootstrap(model, y, x, lw, theta)`
+% * `[xp, alpha, lqx, lqalpha, qstate] = sample_bootstrap(model, y, x, lw, theta, par)`
 %
 % ## Description
 % Samples a set of new samples x[n] from the bootstrap importance density,
@@ -21,7 +21,10 @@ function [xp, alpha, lq, qstate] = sample_bootstrap(model, ~, x, lw, theta, par)
 % ## Output
 % * `xp`: The new samples x[n].
 % * `alpha`: The ancestor indices of x[n].
-% * `lq`: 1-times-J vector of the importance density of the jth sample.
+% * `lq`: 1-times-J vector of the importance density of the jth sample 
+%   `xp`.
+% * `lqalpha`: 1-times-J vector of the importance density of the jth
+%   ancestor index `alpha`.
 % * `qstate`: Sampling algorithm state information, see `resample_ess`.
 %
 % ## Author
@@ -43,11 +46,6 @@ function [xp, alpha, lq, qstate] = sample_bootstrap(model, ~, x, lw, theta, par)
 % You should have received a copy of the GNU General Public License along 
 % with libsmc. If not, see <http://www.gnu.org/licenses/>.
 %}
-
-% TODO:
-% * Consider rewriting this such that we just define the q used in this
-%   case and then pass this to sample_generic, now that we have to redefine
-%   the sampling density anyway.
 
     %% Defaults
     narginchk(5, 6);
@@ -78,7 +76,4 @@ function [xp, alpha, lq, qstate] = sample_bootstrap(model, ~, x, lw, theta, par)
             lqx(j) = px.logpdf(xp(:, j), x(:, j), theta);
         end
     end
-    
-    % Importance density evaluated at {xp(j), alpha(j)}.
-    lq = lqx+lqalpha;
 end

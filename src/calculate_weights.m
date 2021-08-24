@@ -1,7 +1,7 @@
-function lv = calculate_weights(model, y, xp, alpha, lq, x, lw, theta)
+function lv = calculate_weights(model, y, xp, alpha, lqx, lqalpha, x, lw, theta)
 % # General weight calculation for sequential importance sampling
 % ## Usage
-% * `lv = calculate_weights(model, y, xp, alpha, lq, x, lw, theta)`
+% * `lv = calculate_weights(model, y, xp, alpha, lqx, lqalpha, x, lw, theta)`
 %
 % ## Description
 % Calculates the non-normalized log-weight for sequential importance
@@ -16,8 +16,10 @@ function lv = calculate_weights(model, y, xp, alpha, lq, x, lw, theta)
 % * `y`: dy-times-1 measurement vector y[n].
 % * `xp`: dx-times-J matrix of newly drawn particles for the state x[n].
 % * `alpha`: 1-times-J vector of ancestor indices for the state x[n].
-% * `lq`: 1-times-J vector of importance density evaluations at 
-%   {`xp(:, j)`, `alpha(j)`}.
+% * `lqx`: 1-times-J vector of importance density evaluations for 
+%   `xp(:, j)`.
+% * `lqalpha`: 1-times-J vector of importance density evaluations for the
+%   ancestor indices `alpha(j)`.
 % * `x`: dx-times-J matrix of previous state particles x[n-1].
 % * `lw`: 1-times-J matrix of trajectory weights up to n-1.
 % * `theta`: Additional parameters.
@@ -45,7 +47,7 @@ function lv = calculate_weights(model, y, xp, alpha, lq, x, lw, theta)
 % with libsmc. If not, see <http://www.gnu.org/licenses/>.
 %}
 
-    narginchk(8, 8);
+    narginchk(9, 9);
     
     % Get ancestor particles and trajectory weight
     x = x(:, alpha);
@@ -68,5 +70,5 @@ function lv = calculate_weights(model, y, xp, alpha, lq, x, lw, theta)
     %                 Likelihood*Transition*Trajectory
     % Final weight =  --------------------------------
     %                       Importance Density
-    lv = lpy + lpx + lw - lq;
+    lv = lpy + lpx + lw - lqalpha - lqx;
 end
