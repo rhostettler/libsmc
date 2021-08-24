@@ -8,7 +8,7 @@ function varargout = ps(model, y, theta, Jf, Js, par, sys)
 % Particle smoothing based on forward-backward smoothing where a
 % traditional filter is run in the forward direction and a refining
 % smoothing pass is run in the backward direction.
-
+% 
 % Filtering can either be done outside of the `ps` function itself, for 
 % example, using a custom filtering algorithm. In this case, the `sys`
 % struct returned by the filter has to be passed to `ps`. If no valid
@@ -83,7 +83,7 @@ function varargout = ps(model, y, theta, Jf, Js, par, sys)
     if nargin < 5 || isempty(Js)
         Js = 100;
     end
-    if nargin < 6
+    if nargin < 6 || isempty(par)
         par = struct();
     end
     def = struct(...
