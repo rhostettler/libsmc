@@ -126,16 +126,7 @@ function [shat, zhat, sys] = rbps(model, y, theta, Jf, Js, par, sys)
         s = sys(n).x;
         
         for j = 1:Js
-            %% Sampling
-            % Calculate normalizing constant
-            if model.ps.fast
-                lZ = model.ps.logpdf(ss(:, j)*ones(1, Jf), s, theta(:, n));
-            else
-                for i = 1:Jf
-                    lZ(:, i) = model.ps.logpdf(ss(:, j), s(:, i), theta(:, n));
-                end
-            end
-            
+            %% Sampling            
             % Calculate sufficient statistics
             % Notation:
             % Paper -> libsmc
@@ -153,7 +144,7 @@ function [shat, zhat, sys] = rbps(model, y, theta, Jf, Js, par, sys)
             Omega = (Omega + Omega')/2;
             
             % Sample
-            [beta, state] = par.sample_backward_simulation(model, sys(n), lZ, lambda, Omega, theta(n+1));
+            [beta, state] = par.sample_backward_simulation(model, ss(:, j), s, log(sys(n).w), sys(n).mz, sys(n).Pz, lambda, Omega, theta(n));
             ss(:, j) = s(:, beta);
             
             %% Information filter measurement update
@@ -175,7 +166,7 @@ function [shat, zhat, sys] = rbps(model, y, theta, Jf, Js, par, sys)
         %% Store
         sys(n).xs = ss;
         sys(n).ws = 1/Js*ones(1, Js);
-        sys(n).state = [];
+        sys(n).state = state;
     end
     
     %% Recalculate the linear states
@@ -190,32 +181,172 @@ function [shat, zhat, sys] = rbps(model, y, theta, Jf, Js, par, sys)
 end
 
 %% Sampling function
-function [beta, state] = sample_backward_simulation(model, sys, lZ, lambda, Omega, theta)
-    Jf = size(sys.x, 2);
+function [beta, state] = sample_backward_simulation(model, ss, s, lw, mz, Pz, lambda, Omega, theta)
+    [dz, Jf] = size(mz);
+    lZ = zeros(1, Jf);
     lv = zeros(1, Jf);
-    Iz = eye(size(sys.mz, 1));
+    Iz = eye(dz);
     state = [];
     
+    %% Calculate ancestor weights
     % Lambda^i, eta^i according to (21)
     for i = 1:Jf
-        mzi = sys.mz(:, i);
+        % TODO: These statistics are calculated in three places; should put them into one function.
+        % Calculate normalizing constant
+        lZ(:, i) = model.ps.logpdf(ss, s(:, i), theta);
+        
+        % Other statistics
+        mzi = mz(:, i);
 %           Pzi = sys(n).Pz(:, :, i);
 %           Gammai = chol(Pzi).';
-        Gammai = chol(sys.Pz(:, :, i));
+        Gammai = chol(Pz(:, :, i));
         Lambda = Gammai'*Omega*Gammai + Iz;
         eta = mzi'*Omega*mzi - 2*lambda'*mzi ...
             - (Gammai'*(lambda - Omega*mzi))'/Lambda*(Gammai'*(lambda - Omega*mzi));
 %           eta = wnorm(mzi, Omega) - 2*lambda'*mzi ...
 %              - wnorm(Gammai'*(lambda - Omega*mzi), Lambda\Iz);
+
+        % Ancestor weight
         lv(:, i) = -1/2*log(det(Lambda)) - 1/2*eta;
     end
                         
     %% Sample
-    lws = log(sys.w) + lZ + lv;
+    lws = lw + lZ + lv;
     ws = exp(lws-max(lws));
     ws = ws/sum(ws);
     ir = resample_stratified(ws);
     beta = ir(randi(Jf, 1));
+end
+
+function [beta, state] = sample_backward_simulation_rs(model, ss, s, lw, mz, Pz, lambda, Omega, theta)
+% N.B:: This is inefficient, the bounding constant below is not good.
+    [dz, Jf] = size(mz);
+    lZ = zeros(1, Jf);
+    lv = NaN*ones(1, Jf);
+    Iz = eye(dz);
+    lkappa = log(model.ps.kappa);
+    L = 5;
+    
+    % TODO: clean up/implement more efficiently; this is independent of
+    % ss/s, hence, we can calculate this once and store. But where?
+    c1 = min(diag(mz'*Omega*mz));
+    c2 = 2*max(lambda'*mz);
+%     Pm = max(Pz, [], 3);
+    Pm = maxm(Pz);
+    Gammam = chol(Pm);
+    Lambdam = Gammam'*Omega*Gammam + Iz;
+    c3 = max(diag((Gammam'*(lambda*ones(1, Jf)-Omega*mz))'/Lambdam*(Gammam'*(lambda*ones(1, Jf)-Omega*mz))));
+    etamax = c1-c2-c3;
+    
+    %% Rejection sampling
+    done = false;
+    l = 0;
+    while ~done
+        %% Sample candidate from filtering distribution
+        ir = resample_stratified(exp(lw));
+        beta = ir(randi(Jf, 1));
+        
+        %% Calculate statistics
+        % ...if not calculated already
+        if isnan(lv(beta))
+            % Calculate normalizing constant
+            lZ(beta) = model.ps.logpdf(ss, s(:, beta), theta);
+
+            % Other statistics
+            mzi = mz(:, beta);
+            Gammai = chol(Pz(:, :, beta));
+            Lambda = Gammai'*Omega*Gammai + Iz;
+            eta = mzi'*Omega*mzi - 2*lambda'*mzi ...
+                - (Gammai'*(lambda - Omega*mzi))'/Lambda*(Gammai'*(lambda - Omega*mzi));
+
+            % Ancestor weight
+            lv(beta) = -1/2*log(det(Lambda)) - 1/2*eta;
+        end
+
+        %% Accept/reject step
+        gamma = exp(lZ(beta) + lv(beta) - lkappa + 1/2*etamax);
+        u = rand(1);
+        if gamma > 1
+            warning('libsmc:warning', 'Acceptance probability larger than one, check the bounding constant.');
+        end
+        accepted = (u <= gamma);       
+        
+        % Loop termination critera
+        l = l+1;
+        done = accepted || l >= L;
+    end
+    
+    %% Exhaustive search
+    if ~accepted
+        % Lambda^i, eta^i according to (21)
+        for i = find(isnan(lv))
+            % Calculate normalizing constant
+            lZ(i) = model.ps.logpdf(ss, s(:, i), theta);
+
+            % Other statistics
+            mzi = mz(:, i);
+            Gammai = chol(Pz(:, :, i));
+            Lambda = Gammai'*Omega*Gammai + Iz;
+            eta = mzi'*Omega*mzi - 2*lambda'*mzi ...
+                - (Gammai'*(lambda - Omega*mzi))'/Lambda*(Gammai'*(lambda - Omega*mzi));
+
+            % Ancestor weight
+            lv(i) = -1/2*log(det(Lambda)) - 1/2*eta;
+        end
+
+        %% Sample
+        lws = lw + lZ + lv;
+        ws = exp(lws-max(lws));
+        ws = ws/sum(ws);
+        ir = resample_stratified(ws);
+        beta = ir(randi(Jf, 1));
+    end
+    
+    state = struct('l', l, 'accepted', accepted);
+end
+
+function [beta, state] = sample_backward_simulation_mcmc(model, ss, s, lw, mz, Pz, lambda, Omega, theta)
+    [dz, Jf] = size(mz);
+    Iz = eye(dz);
+    L = 5;
+    state = [];
+        
+    %% Metropolis-Hastings sampling
+
+    w = exp(lw);
+    q = struct( ...
+        'rand', @(beta) catrnd(w), ...
+        'logpdf', @(betap, beta) lw(betap) ...
+    );
+
+    % Log of target density
+    lZ = @(beta) model.ps.logpdf(ss, s(:, beta), theta);  % Normalizing constant
+    Gammai = @(beta) chol(Pz(:, :, beta));
+    Lambda = @(beta) Gammai(beta)'*Omega*Gammai(beta) + Iz;
+    eta = @(beta) ( ...
+        mz(:, beta)'*Omega*mz(:, beta) - 2*lambda'*mz(:, beta) ...
+        - (Gammai(beta)'*(lambda - Omega*mz(:, beta)))'/Lambda(beta)*(Gammai(beta)'*(lambda - Omega*mz(:, beta))) ...
+    );
+    lv = @(beta) -1/2*log(det(Lambda(beta))) - 1/2*eta(beta);  % Ancestor weight
+    p = @(beta) lw(beta) + lZ(beta) + lv(beta);
+    
+    % Sample inital guess from filtering distribution
+    beta = catrnd(w);
+    
+    % Metropolis-Hastings
+    betas = metropolis_hastings(p, beta, q, L);
+    beta = betas(L);
+end
+
+%% 
+function M = maxm(M)
+    N = size(M, 3);
+    tr = zeros(1, N);
+    for i = 1:N
+        tr(i) = trace(N);
+    end
+    [~, i] = max(tr);
+    M = M(:, :, i(1));
 end
 
 %% Recalculate the linear states

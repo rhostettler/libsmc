@@ -81,7 +81,7 @@ function [shat, zhat, sys] = rbpf(model, y, theta, J, par)
     if nargin < 4 || isempty(J)
         J = 100;
     end
-    if nargin < 5 || isemtpy(par)
+    if nargin < 5 || isempty(par)
         par = struct();
     end
     def = struct( ...
@@ -216,6 +216,17 @@ function lv = calculate_incremental_weights_bootstrap(model, y, sp, ~, mzp, Pzp,
         end
     end
 end
+
+%% 
+% function lv = calculate_incremental_weights_generic(model, y, sp, s, mzp, Pzp, theta, lq)
+% % todo: this is a mess, most likely doesn't work for other than the bw
+% % compensation! should really be derived fully!
+%     J = size(sp, 2);
+%     lv = zeros(1, J);
+%     for j = 1:J
+%         lv(:, j) = model.pym.logpdf(y, sp(:, j), mzp(:, j), Pzp(:, :, j), theta) + model.ps.logpdf(sp(:, j), s(:, j), [], [], theta) - lq(j);
+%     end
+% end
 
 %% Kalman filter prediction for mixing models
 function [mzp, Pzp] = predict_kf_mixing(model, sp, s, mz, Pz, theta)
