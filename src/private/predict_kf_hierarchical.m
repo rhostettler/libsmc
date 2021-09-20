@@ -1,7 +1,7 @@
-function [mzp, Pzp] = predict_kf_hierarchical(model, sp, ~, mz, Pz, theta)
+function [mzp, Pzp] = predict_kf_hierarchical(model, sp, alpha, ~, mz, Pz, theta)
 % # Conditional Kalman filter prediction for hierarchical models
 % ## Usage
-% * `[mzp, Pzp] = predict_kf_hierarchical(model, sp, s, mz, Pz, theta)`
+% * `[mzp, Pzp] = predict_kf_hierarchical(model, sp, alpha, s, mz, Pz, theta)`
 %
 % ## Description
 % Kalman filter prediction for hierarchical conditionally linear Gaussian
@@ -20,6 +20,7 @@ function [mzp, Pzp] = predict_kf_hierarchical(model, sp, ~, mz, Pz, theta)
 %    - `model.pz.Q`: Function handle for the process noise covariance
 %      matrix.
 % * `sp`: ds-times-J matrix of nonlinear states `s[n]`.
+% * `alpha`: 1-times-J vector of ancestor indices for the state `s[n]`.
 % * `s`: ds-times-J matrix of nonlinear states `s[n-1]`.
 % * `mz`: dz-times-J matrix of previous means of the linear states.
 % * `Pz`: dz-times-dz-times-J array of previous covariances of the linear
@@ -60,7 +61,9 @@ function [mzp, Pzp] = predict_kf_hierarchical(model, sp, ~, mz, Pz, theta)
 % with libsmc. If not, see <http://www.gnu.org/licenses/>.
 %}
 
-    narginchk(6, 6);
+    narginchk(7, 7);
+    mz = mz(:, alpha);
+    Pz = Pz(:, :, alpha);
     [dz, J] = size(mz);
     mzp = zeros(dz, J);
     Pzp = zeros([dz, dz, J]);

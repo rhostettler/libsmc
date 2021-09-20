@@ -71,7 +71,11 @@ function [shat, zhat, sys] = rbpf(model, y, theta, J, par)
 %   in the KF parts...).
 %   => We might want to do this through the kf_update-functions.
 % * Only hierarchical model is revised and implemented just now.
-% * Document the additional model structs: ps0, pz0, ps, pz, pym
+% * Document the additional model structs: ps0, pz0, ps, pz, psm, pym
+% * Setting s <- s(:, alpha), mz <- mz(:, alpha), and Pz <- Pz(:, :, alpha)
+%   should possibly be handled right after sampling. It appears that it
+%   makes no sense to do this individually in each function that is called
+%   afterwards?
     
     %% Defaults
     narginchk(2, 5);
@@ -85,9 +89,8 @@ function [shat, zhat, sys] = rbpf(model, y, theta, J, par)
         par = struct();
     end
     def = struct( ...
-        'resample', @resample_ess, ...
-        'sample', @sample_bootstrap, ...
-        'calculate_incremental_weights', @calculate_incremental_weights_bootstrap, ...
+        'sample', @sample_bootstrap_rbpf, ...
+        'calculate_weights', @calculate_weights_bootstrap_rbpf, ...
         'predict_kf', @predict_kf_hierarchical, ...
         'update_kf', @update_kf ...
     );
@@ -124,7 +127,6 @@ function [shat, zhat, sys] = rbpf(model, y, theta, J, par)
         sys(1).mz = mz;
         sys(1).Pz = Pz;
         sys(1).alpha = 1:J;
-        sys(1).rstate = struct('r', false, 'ess', J);
         sys(1).qstate = [];
     end
     shat = zeros(ds, N-1);
@@ -134,25 +136,27 @@ function [shat, zhat, sys] = rbpf(model, y, theta, J, par)
     for n = 2:N
         %% Update
         % Resample and draw particles
-        [alpha, lw, rstate] = par.resample(lw);
-        s = s(:, alpha);
-        mz = mz(:, alpha);
-        Pz = Pz(:, :, alpha);
-        [sp, lqs, qstate] = par.sample(model, y(:, n), s, mz, Pz, theta(:, n));
+        [sp, alpha, lqs, lqalpha, qstate] = par.sample(model, y, s, mz, Pz, lw, theta(:, n));
         
         % Prediction for linear states
-        [mzp, Pzp] = par.predict_kf(model, sp, s, mz, Pz, theta(:, n));
+        [mzp, Pzp] = par.predict_kf(model, sp, alpha, s, mz, Pz, theta(:, n));
         
-        % Calculate particle weights
-        lv = par.calculate_incremental_weights(model, y(:, n), sp, s, mzp, Pzp, theta(:, n), lqs);
-        lw = lw + lv;
-        w = exp(lw-max(lw));
+        % Calculate and normalize weights
+        if ~isempty(par.calculate_weights)
+            lw = par.calculate_weights(model, y(:, n), sp, mzp, Pzp, alpha, lqs, lqalpha, s, mz, Pz, lw, theta(:, n));
+        else
+            lw = -log(J)*ones(1, J);
+        end
+        lw = lw-max(lw);
+        w = exp(lw);
         w = w/sum(w);
         lw = log(w);
-        s = sp;
         if any(~isfinite(w))
             warning('libsmc:warning', 'NaN/Inf in particle weights.');
         end
+        
+        % Update state
+        s = sp;
         
         % Measurement update for linear states
         [mz, Pz] = par.update_kf(model, y(:, n), s, mzp, Pzp, theta(:, n));
@@ -171,7 +175,6 @@ function [shat, zhat, sys] = rbpf(model, y, theta, J, par)
             sys(n).Pz = Pz;
             sys(n).w = w;
             sys(n).alpha = alpha;
-            sys(n).rstate = rstate;
             sys(n).qstate = qstate;
         end
     end
@@ -183,50 +186,6 @@ function [shat, zhat, sys] = rbpf(model, y, theta, J, par)
         sys = calculate_particle_lineages(sys);
     end
 end
-
-%% Bootstrap sampling function
-% Overwrites global bootstrap sampling function; samples from the marginal 
-% dynamics p(s[n] | s[n-1]).
-function [sp, lqs, qstate] = sample_bootstrap(model, ~, s, mz, Pz, theta)
-    qstate = [];
-    if model.ps.fast
-        sp = model.ps.rand(s, mz, Pz, theta);
-        lqs = model.ps.logpdf(sp, s, mz, Pz, theta);
-    else
-        [ds, J] = size(s, 2);
-        sp = zeros(ds, J);
-        lqs = zeros(1, J);
-        for j = 1:J
-            sp(:, j) = model.ps.rand(s(:, j), mz(:, j), Pz(:, :, j), theta);
-            lqs(:, j) = model.ps.logpdf(sp(:, j), s(:, j), mz(:, j), Pz(:, :, j), theta);
-        end
-    end
-end
-
-%% Bootstrap weighing function
-% Overwrites global bootstrap weighing function
-function lv = calculate_incremental_weights_bootstrap(model, y, sp, ~, mzp, Pzp, theta, ~)
-    if model.pym.fast
-        lv = model.pym.logpdf(y, sp, mzp, Pzp);
-    else
-        J = size(sp, 2);
-        lv = zeros(1, J);
-        for j = 1:J
-            lv(:, j) = model.pym.logpdf(y, sp(:, j), mzp(:, j), Pzp(:, :, j), theta);
-        end
-    end
-end
-
-%% 
-% function lv = calculate_incremental_weights_generic(model, y, sp, s, mzp, Pzp, theta, lq)
-% % todo: this is a mess, most likely doesn't work for other than the bw
-% % compensation! should really be derived fully!
-%     J = size(sp, 2);
-%     lv = zeros(1, J);
-%     for j = 1:J
-%         lv(:, j) = model.pym.logpdf(y, sp(:, j), mzp(:, j), Pzp(:, :, j), theta) + model.ps.logpdf(sp(:, j), s(:, j), [], [], theta) - lq(j);
-%     end
-% end
 
 %% Kalman filter prediction for mixing models
 function [mzp, Pzp] = predict_kf_mixing(model, sp, s, mz, Pz, theta)

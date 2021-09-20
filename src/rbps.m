@@ -370,7 +370,7 @@ function [zhat, sys] = smooth_rts(model, y, theta, sys)
     for n = 2:N
         % Prediction
         sp = sys(n).xs;
-        [mzp, Pzp] = predict_kf_hierarchical(model, sp, s, mz, Pz, theta(:, n));
+        [mzp, Pzp] = predict_kf_hierarchical(model, sp, 1:Js, s, mz, Pz, theta(:, n));
         
         % Measurement update
         s = sp;
