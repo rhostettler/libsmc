@@ -1,11 +1,73 @@
 function [shat, zhat, sys] = smooth_rbffbsi(model, y, theta, Js, sys, par)
+% # Rao-Blackwellized FFBSi particle smoothing
+% ## Usage
+% * `shat = smooth_rbffbsi(model, y, theta, Js, sys)`
+% * `[shat, zhat, sys] = smooth_rbffbsi(model, y, theta, Js, sys, par)`
+%
+% ## Description
+% Rao-Blackwellized forward-filtering backward-simulation (FFBSi) particle 
+% smoother as described in [1]. This smoothing algorithm can be used with
+% the standard `ps()` smoothing frontend.
+%
+% IMPORTANT! Currently, smoothing is only implemented for the hierarchical
+% model, see TODOs throughout the code.
+%
+% ## Input
+% * `model`: State-space model struct.
+% * `y`: dy-times-N matrix of measurements.
+% * `theta`: Additional parameters.
+% * `Js`: No. of smoothing particles.
+% * `sys`: Particle system array of structs from a Rao-Blackwellized
+%   particle filter.
+% * `par`: Algorithm parameter struct, may contain the following fields:
+%     - `[lambda, Omega] = predict_bf(model, ss, lambda_hat, Omega_hat, theta)`:
+%       Backward filter prediction function (default:
+%       `@predict_bf_hierarchical`).
+%     - `[beta, state] = sample_backward_simulation(model, model, ss, s, lw, mz, Pz, lambda, Omega, theta)`:
+%       Function to sample from the backward smoothing kernel (default:
+%       `@sample_backward_simulation`).
+%
+% ## Output
+% * `shat`: ds-times-N matrix of smoothed state estimates (MMSE) for the
+%   nonlinear states.
+% * `zhat`: dz-times-N matrix of smoothed state estimates (MMSE) for the
+%   conditionally linear states.
+% * `sys`: Particle system array of structs for the smoothed particle
+%   system. The following fields are added by `smooth_ffbsi`:
+%     - `xs`: Smoothed particles (nonlinear states `s`).
+%     - `ws`: Smoothed particle weights (`1/Js` for FFBSi).
+%     - `state`: State of the backward simulation sampler.
+%     - `lambda`, `Omega`: Backward filter statistics.
+% 
+% ## References
+% 1. F. Lindsten, P. Bunch, S. Särkkä, T. B. Schön, and S. J. Godsill, 
+%    “Rao–Blackwellized particle smoothers for conditionally linear 
+%    Gaussian models,” IEEE Journal of Selected Topics in Signal 
+%    Processing, vol. 10, no. 2, pp. 353–365, March 2016.
+%
+% ## Authors
+% 2021-present -- Roland Hostettler <roland.hostettler@angstrom.uu.se>
+
+%{
+% This file is part of the libsmc Matlab toolbox.
+%
+% libsmc is free software: you can redistribute it and/or modify it under 
+% the terms of the GNU General Public License as published by the Free 
+% Software Foundation, either version 3 of the License, or (at your option)
+% any later version.
+% 
+% libsmc is distributed in the hope that it will be useful, but WITHOUT ANY
+% WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+% FOR A PARTICULAR PURPOSE. See the GNU General Public License for more 
+% details.
+% 
+% You should have received a copy of the GNU General Public License along 
+% with libsmc. If not, see <http://www.gnu.org/licenses/>.
+%}
 
 % TODO:
-% * Documentation
-% * Copyright notice
-% * Only hierarchical model implemented right now
-% * No testcase implemented
-% * Smoothing of linear states can be done at once, i think
+% * Implement mixing model
+% * Implement testcase
 
     %% Defaults
     narginchk(5, 6);
@@ -69,42 +131,6 @@ function [shat, zhat, sys] = smooth_rbffbsi(model, y, theta, Js, sys, par)
         % Backward filter update
         [lambda_hat, Omega_hat] = update_bf(model, y(:, n), ss, lambda, Omega, theta(:, n));
         
-        %% Old code
-%         for j = 1:Js
-%             %% Sample backward trajectory
-%             % Calculate sufficient statistics
-%             % Notation:
-%             % Paper -> libsmc
-%             % f     -> pz.g
-%             % A     -> pz.G
-%             % F     -> chol(pz.Q).'
-%             gj = model.pz.g(ss(:, j), theta(:, n));
-%             Gj = model.pz.G(ss(:, j), theta(:, n));
-%             Fj = chol(model.pz.Q(ss(:, j), theta(:, n))).';
-%             mj = lambda_hat(:, j) - Omega_hat(:, :, j)*gj;
-%             Mj = Fj'*Omega_hat(:, :, j)*Fj + Idz;
-%             Lj = Gj'*(Idz - Omega_hat(:, :, j)*Fj/Mj*Fj');
-%             lambda = Lj*mj;
-%             Omega = Lj*Omega_hat(:, :, j)*Gj;
-%             Omega = (Omega + Omega')/2;
-%             
-%             % Sample
-%             [beta, state] = par.sample_backward_simulation(model, ss(:, j), sys(n).x, log(sys(n).w), sys(n).mz, sys(n).Pz, lambda, Omega, theta(n));
-%             ss(:, j) = sys(n).x(:, beta);
-%             
-%             %% Information filter measurement update
-%             hj = model.py.h(ss(:, j), theta(:, n));
-%             Hj = model.py.H(ss(:, j), theta(:, n));
-%             Rj = model.py.R(ss(:, j), theta(:, n));
-%             lambda_hat(:, j) = lambda + Hj'/Rj*(y(:, n) - hj);
-%             Omega_hat_tmp = Omega + Hj'/Rj*Hj;
-%             Omega_hat(:, :, j) = (Omega_hat_tmp + Omega_hat_tmp')/2;
-%             
-%             %% Store
-%             sys(n).lambda(:, j) = lambda;
-%             sys(n).Omega(:, :, j) = Omega;
-%         end
-
         %% Store
         sys(n).xs = ss;
         sys(n).ws = 1/Js*ones(1, Js);
@@ -186,11 +212,6 @@ function [lambda_hat, Omega_hat] = update_bf(model, y, ss, lambda, Omega, theta)
 end
 
 %% Backward simulation sampling
-% Notation:
-% Paper -> libsmc
-% f     -> pz.g
-% A     -> pz.G
-% F     -> chol(pz.Q).'
 function [beta, state] = sample_backward_simulation(model, ss, s, lw, mz, Pz, lambda, Omega, theta)
     narginchk(9, 9);
     state = [];
