@@ -136,7 +136,7 @@ function [shat, zhat, sys] = rbpf(model, y, theta, J, par)
     for n = 2:N
         %% Update
         % Resample and draw particles
-        [sp, alpha, lqs, lqalpha, qstate] = par.sample(model, y, s, mz, Pz, lw, theta(:, n));
+        [sp, alpha, lqs, lqalpha, qstate] = par.sample(model, y(:, n), s, mz, Pz, lw, theta(:, n));
         
         % Prediction for linear states
         [mzp, Pzp] = par.predict_kf(model, sp, alpha, s, mz, Pz, theta(:, n));

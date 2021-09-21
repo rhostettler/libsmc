@@ -1,5 +1,5 @@
 function [shat, zhat, sys] = rbps(model, y, theta, Jf, Js, par, sys)
-% # Rao--Blackwellized FFBSi particle smoother
+% # Rao-Blackwellized FFBSi particle smoother
 % ## Usage
 % * `shat = rbps(model, y, theta, Jf, Js, par, sys)`
 % 
@@ -48,8 +48,8 @@ function [shat, zhat, sys] = rbps(model, y, theta, Jf, Js, par, sys)
         theta = NaN;
     end
     if nargin < 4 || isempty(Jf)
-        % TODO: There's a conflict if sys is provided (no need for
-        % specifying Jf)
+        % N.B.: If sys is provided, this is overwritten later on  by the
+        % no. of particles used in the external filter.
         Jf = 250;
     end
     if nargin < 5 || isempty(Js)
@@ -62,9 +62,15 @@ function [shat, zhat, sys] = rbps(model, y, theta, Jf, Js, par, sys)
     	'sample_backward_simulation', @sample_backward_simulation ...
     );
     par = parchk(par, def);
+    
+    %% Smoothing
+    % If no filtered system is provided, run a bootstrap RBPF first
+    if nargin < 7 || isempty(sys)
+        [~, sys] = rbpf(model, y, theta, Jf);
+    end
 
+    %% Smoothing
     % Expand data dimensions, prepend NaN for zero measurement
-    % TODO: This conflicts when sys is provided (we prepend NaN twice)
     [dy, N] = size(y);
     y = [NaN*ones(dy, 1), y];
     
@@ -74,12 +80,6 @@ function [shat, zhat, sys] = rbps(model, y, theta, Jf, Js, par, sys)
         theta = theta*ones(1, N);
     end
     
-    %% Filtering
-    % If no filtered system is provided, run a bootstrap PF first
-    if nargin < 7 || isempty(sys)
-        [~, sys] = rbpf(model, y, theta, Jf);
-    end
-
     %% Preallocate
     % TODO: Move this to some 'smooth_XXX' function.
     N = length(sys);
@@ -216,137 +216,6 @@ function [beta, state] = sample_backward_simulation(model, ss, s, lw, mz, Pz, la
     ws = ws/sum(ws);
     ir = resample_stratified(ws);
     beta = ir(randi(Jf, 1));
-end
-
-function [beta, state] = sample_backward_simulation_rs(model, ss, s, lw, mz, Pz, lambda, Omega, theta)
-% N.B:: This is inefficient, the bounding constant below is not good.
-    [dz, Jf] = size(mz);
-    lZ = zeros(1, Jf);
-    lv = NaN*ones(1, Jf);
-    Iz = eye(dz);
-    lkappa = log(model.ps.kappa);
-    L = 5;
-    
-    % TODO: clean up/implement more efficiently; this is independent of
-    % ss/s, hence, we can calculate this once and store. But where?
-    c1 = min(diag(mz'*Omega*mz));
-    c2 = 2*max(lambda'*mz);
-%     Pm = max(Pz, [], 3);
-    Pm = maxm(Pz);
-    Gammam = chol(Pm);
-    Lambdam = Gammam'*Omega*Gammam + Iz;
-    c3 = max(diag((Gammam'*(lambda*ones(1, Jf)-Omega*mz))'/Lambdam*(Gammam'*(lambda*ones(1, Jf)-Omega*mz))));
-    etamax = c1-c2-c3;
-    
-    %% Rejection sampling
-    done = false;
-    l = 0;
-    while ~done
-        %% Sample candidate from filtering distribution
-        ir = resample_stratified(exp(lw));
-        beta = ir(randi(Jf, 1));
-        
-        %% Calculate statistics
-        % ...if not calculated already
-        if isnan(lv(beta))
-            % Calculate normalizing constant
-            lZ(beta) = model.ps.logpdf(ss, s(:, beta), theta);
-
-            % Other statistics
-            mzi = mz(:, beta);
-            Gammai = chol(Pz(:, :, beta));
-            Lambda = Gammai'*Omega*Gammai + Iz;
-            eta = mzi'*Omega*mzi - 2*lambda'*mzi ...
-                - (Gammai'*(lambda - Omega*mzi))'/Lambda*(Gammai'*(lambda - Omega*mzi));
-
-            % Ancestor weight
-            lv(beta) = -1/2*log(det(Lambda)) - 1/2*eta;
-        end
-
-        %% Accept/reject step
-        gamma = exp(lZ(beta) + lv(beta) - lkappa + 1/2*etamax);
-        u = rand(1);
-        if gamma > 1
-            warning('libsmc:warning', 'Acceptance probability larger than one, check the bounding constant.');
-        end
-        accepted = (u <= gamma);       
-        
-        % Loop termination critera
-        l = l+1;
-        done = accepted || l >= L;
-    end
-    
-    %% Exhaustive search
-    if ~accepted
-        % Lambda^i, eta^i according to (21)
-        for i = find(isnan(lv))
-            % Calculate normalizing constant
-            lZ(i) = model.ps.logpdf(ss, s(:, i), theta);
-
-            % Other statistics
-            mzi = mz(:, i);
-            Gammai = chol(Pz(:, :, i));
-            Lambda = Gammai'*Omega*Gammai + Iz;
-            eta = mzi'*Omega*mzi - 2*lambda'*mzi ...
-                - (Gammai'*(lambda - Omega*mzi))'/Lambda*(Gammai'*(lambda - Omega*mzi));
-
-            % Ancestor weight
-            lv(i) = -1/2*log(det(Lambda)) - 1/2*eta;
-        end
-
-        %% Sample
-        lws = lw + lZ + lv;
-        ws = exp(lws-max(lws));
-        ws = ws/sum(ws);
-        ir = resample_stratified(ws);
-        beta = ir(randi(Jf, 1));
-    end
-    
-    state = struct('l', l, 'accepted', accepted);
-end
-
-function [beta, state] = sample_backward_simulation_mcmc(model, ss, s, lw, mz, Pz, lambda, Omega, theta)
-    [dz, Jf] = size(mz);
-    Iz = eye(dz);
-    L = 5;
-    state = [];
-        
-    %% Metropolis-Hastings sampling
-
-    w = exp(lw);
-    q = struct( ...
-        'rand', @(beta) catrnd(w), ...
-        'logpdf', @(betap, beta) lw(betap) ...
-    );
-
-    % Log of target density
-    lZ = @(beta) model.ps.logpdf(ss, s(:, beta), theta);  % Normalizing constant
-    Gammai = @(beta) chol(Pz(:, :, beta));
-    Lambda = @(beta) Gammai(beta)'*Omega*Gammai(beta) + Iz;
-    eta = @(beta) ( ...
-        mz(:, beta)'*Omega*mz(:, beta) - 2*lambda'*mz(:, beta) ...
-        - (Gammai(beta)'*(lambda - Omega*mz(:, beta)))'/Lambda(beta)*(Gammai(beta)'*(lambda - Omega*mz(:, beta))) ...
-    );
-    lv = @(beta) -1/2*log(det(Lambda(beta))) - 1/2*eta(beta);  % Ancestor weight
-    p = @(beta) lw(beta) + lZ(beta) + lv(beta);
-    
-    % Sample inital guess from filtering distribution
-    beta = catrnd(w);
-    
-    % Metropolis-Hastings
-    betas = metropolis_hastings(p, beta, q, L);
-    beta = betas(L);
-end
-
-%% 
-function M = maxm(M)
-    N = size(M, 3);
-    tr = zeros(1, N);
-    for i = 1:N
-        tr(i) = trace(N);
-    end
-    [~, i] = max(tr);
-    M = M(:, :, i(1));
 end
 
 %% Recalculate the linear states
