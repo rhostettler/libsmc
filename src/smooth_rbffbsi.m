@@ -153,7 +153,8 @@ end
 %% Backward filter initialization
 function [lambda_hat, Omega_hat] = initialize_bf(model, y, ss, sys, theta)
     narginchk(5, 5);
-    [dz, Js] = size(sys.mz);
+    Js = size(ss, 2);
+    dz = size(sys.mz, 1);
     lambda_hat = zeros(dz, Js);
     Omega_hat = zeros(dz, dz, Js);
     
@@ -198,7 +199,7 @@ function [lambda_hat, Omega_hat] = update_bf(model, y, ss, lambda, Omega, theta)
     narginchk(6, 6);
     [dz, Js] = size(lambda);
     lambda_hat = zeros(dz, Js);
-    Omega_hat = zeros(dz, Js);
+    Omega_hat = zeros(dz, dz, Js);
 
     for j = 1:Js
         hj = model.py.h(ss(:, j), theta);
