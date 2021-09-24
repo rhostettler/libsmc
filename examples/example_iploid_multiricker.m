@@ -28,7 +28,7 @@
 clear variables;
 addpath ../src;
 rng(5011);
-warning('off', 'all');
+% warning('off', 'all');
 
 %% Parameters
 % Grid for the grid filter
@@ -36,21 +36,21 @@ xg = -5:1e-3:5;
 
 % Filter parameters
 J_bpf = 250;              % Number of particles
-J_cf1 = 500;
+J_cf1 = 100;
 J_gf = 100;
 J_pfpf = 100;
-J_cf = 500;
+J_cf = 100;
 L = 10;                     % Max. number of iterations (10)
 L_gf = 10;                  % GF integration steps
 L_pfpf = 29;                % PFPF integration steps
 epsilon = 1e-3;             % Convergence threshold (1e-3)
 
 % Simulation parameters
-N = 10;                    % Number of time samples (100)
-K = 2;                    % Number of MC simulations (100)
+N = 100;                    % Number of time samples (100)
+K = 2;                      % Number of MC simulations (100)
 
 % Model parameters
-dx = 5;                    % No. of patches; equals state dimension (10)
+dx = 10;                    % No. of patches; equals state dimension (10)
 r = 1;                      % Growth rate (1)
 c = 1;                      % Migration parameter (scaling of distance) (1)
 m = 0.1;                    % Migration rate (0.1)
@@ -65,12 +65,12 @@ beta = 0.5;                 % Likelihood skewness/tail (0 = poisson; 0.5)
 % Which filters to run
 use_grid = false;           % Grid filter; run this only when dx = 1
 use_bpf = true;             % Bootstrap PF
-use_cf1 = true;             % One-step closed form OID approximation
-use_gf = true;              % Gaussian flow OID approximation
-use_pfpf = true;            % Particle flow PF with LEDH flow
+use_cf1 = false;             % One-step closed form OID approximation
+use_gf = false;              % Gaussian flow OID approximation
+use_pfpf = false;            % Particle flow PF with LEDH flow
 use_cf = true;              % Closed-form ICE OID approximation
-use_lin = false;            % Linearization ICE OID approximation
-use_sp = false;             % Sigma-point ICE OID approximation
+use_lin = true;            % Linearization ICE OID approximation
+use_sp = true;             % Sigma-point ICE OID approximation
 
 % Other switches
 plots = false;              % Show debugging plots?
@@ -89,7 +89,7 @@ kappa_sp = 0;
 px0 = struct( ...
     'rand', @(M) m0*ones(1, M) + chol(P0).'*randn(dx, M), ...
     'logpdf', @(x, theta) logmvnpdf(x.', m0.', P0).', ...
-    'm', m0, 'P', P0 ...
+    'mean', @(~, ~) m0, 'cov', @(~, ~) P0 ...
 );
 
 %% Dynamic model
@@ -119,9 +119,9 @@ px = struct( ...
         exp(log(1-rho)+logmvnpdf(xp.', f(x, theta).', Qu).') ...
         + exp(log(rho)+logmvnpdf(xp.', f(x, theta).', Qu + Qv').') ...
     ), ...
-    'm', f, ...
-    'dm', Fx, ...
-    'P', Qu + rho*Qv ...
+    'mean', f, ...
+    'jacobian', Fx, ...
+    'cov', Q ...
 );
 % w/ uniform process noise
 % Q = @(x, theta) 1/12*(2*l)^2*eye(dx) + rho*sigma2*ones(dx, dx);
@@ -148,57 +148,68 @@ py = struct( ...
     'fast', true, ...
     'rand', @(x, theta) (theta*ones(1, size(x, 2))).*gpoissonrnd(exp(x).*(1-beta), beta, size(x)), ...
     'logpdf', @(y, x, theta) multiricker_lpy(y, x, theta, beta), ...
-    'm', g, ...
-    'dm', Gx, ...
-    'P', R, ...
+    'mean', g, ...
+    'jacobian', Gx, ...
+    'cov', R, ...
     'ytr', @(y, theta) submat(y, theta == 1, 1) ...
 );
 
 % Model struct
 model = struct('px0', px0, 'px', px, 'py', py);
+% model = model_multiricker(r, c, m, rho, sigma2v, Qu, C, beta, m0, P0);
 
 %% Algorithm parameters
 % One-step OID approximation, closed-form moments
-slr_cf = @(m, P, theta) slr_cf(m, P, theta, Ey, Cy, Cyx);
+par_cf1_sampler = struct( ...
+    'L', 1, ...
+    'kappa', gammaT, ...
+    'slr', @(m, P, theta) slr_cf(m, P, theta, Ey, Cy, Cyx) ...
+);
 par_cf1 = struct( ...
-    'sample', @(model, y, x, theta) sample_gaussian(model, y(theta == 1, :), x, theta, f, Q, slr_cf, 1, gammaT), ...
-    'calculate_incremental_weights', @calculate_incremental_weights_generic ...
+    'sample', @(model, y, x, lw, theta) sample_gaussian(model, y(theta == 1, :), x, lw, theta, par_cf1_sampler), ...
+    'calculate_weights', @calculate_weights ...
 );
 
 % Gaussian flow OID approximation
+par_gf_sampler = struct('L', L_gf);
 par_gf = struct( ...
-    'sample', @(model, y, x, theta) sample_gaussian_flow(model, y(theta == 1, :), x, theta, f, Q, g, Gx, dGxdx, R, L_gf), ...
-    'calculate_incremental_weights', @calculate_incremental_weights_flow ...
+    'sample', @(model, y, x, lw, theta) sample_gaussian_flow(model, y(theta == 1, :), x, lw, theta, dGxdx, par_gf_sampler), ...
+    'calculate_weights', @calculate_weights ...
 );
 
 % Particle flow particle filter
-par_pfpf = struct( ...
-    'L', L_pfpf, ...
-    'ukf', [alpha_sp, beta_sp, kappa_sp] ...
-);
+par_pfpf = struct('L', L_pfpf, 'ukf', [alpha_sp, beta_sp, kappa_sp]);
 
 % ICE OID approximation, closed-form moments
+par_cf_sampler = struct( ...
+    'L', L, ...
+    'kappa', gammaT, ...
+    'epsilon', epsilon, ...
+    'slr', @(m, P, theta) slr_cf(m, P, theta, Ey, Cy, Cyx) ...
+);
 par_cf = struct( ...
-    'sample', @(model, y, x, theta) sample_gaussian(model, y(theta == 1, :), x, theta, f, Q, slr_cf, L, gammaT, epsilon), ...
-    'calculate_incremental_weights', @calculate_incremental_weights_generic ...
+    'sample', @(model, y, x, lw, theta) sample_gaussian(model, y(theta == 1, :), x, lw, theta, par_cf_sampler), ...
+    'calculate_weights', @calculate_weights ...
 );
 
-% % ICE OID approximation, Taylor series moment approximation
-% slr_lin = @(m, P, theta) slr_taylor(m, P, theta, g, Gx, R);
-% par_lin = struct( ...
-%     'sample', @(model, y, x, theta) sample_gaussian(model, y(theta == 1, :), x, theta, f, Q, slr_lin, L, gammaT, epsilon), ...
-%     'calculate_incremental_weights', @calculate_incremental_weights_generic ...
-% );
-% 
-% % ICE OID approximation, sigma-point moment approximation
-% dx = size(m0, 1);
-% [wm, wc, c] = ut_weights(dx, alpha_sp, beta_sp, kappa_sp);
-% Xi = ut_sigmas(zeros(dx, 1), eye(dx), c);
-% slr_sp = @(m, P, theta) slr_sp(m, P, theta, g, R, Xi, wm, wc);
-% par_sp = struct( ...
-%     'sample', @(model, y, x, theta) sample_gaussian(model, y(theta == 1, :), x, theta, f, Q, slr_sp, L, gammaT, epsilon), ...
-%     'calculate_incremental_weights', @calculate_incremental_weights_generic ...
-% );
+% ICE OID approximation, Taylor series moment approximation
+par_lin_sampler = par_cf_sampler;
+par_lin_sampler.slr = @(m, P, theta) slr_taylor(m, P, theta, g, Gx, R);
+par_lin = struct( ...
+    'sample', @(model, y, x, lw, theta) sample_gaussian(model, y(theta == 1, :), x, lw, theta, par_lin_sampler), ...
+    'calculate_weights', @calculate_weights ...
+);
+
+% ICE OID approximation, sigma-point moment approximation
+dx = size(m0, 1);
+[wm, wc, c] = ut_weights(dx, alpha_sp, beta_sp, kappa_sp);
+Xi = ut_sigmas(zeros(dx, 1), eye(dx), c);
+par_sp_sampler = par_cf_sampler;
+par_sp_sampler.slr = @(m, P, theta) slr_sp(m, P, theta, g, R, Xi, wm, wc);
+par_sp = struct( ...
+    'sample', @(model, y, x, lw, theta) sample_gaussian(model, y(theta == 1, :), x, lw, theta, par_sp_sampler), ...
+    'calculate_weights', @calculate_weights ...
+);
 
 %% Preallocate
 xs = zeros(dx, N, K);
@@ -210,26 +221,28 @@ xhat_cf1 = xhat_bpf;
 xhat_gf = xhat_bpf;
 xhat_pfpf = xhat_bpf;
 xhat_cf = xhat_bpf;
-% xhat_lin = xhat_bpf;
-% xhat_sp = xhat_bpf;
+xhat_lin = xhat_bpf;
+xhat_sp = xhat_bpf;
 
 ess_bpf = zeros(1, N, K);
 ess_cf1 = ess_bpf;
 ess_gf = ess_bpf;
 ess_pfpf = ess_bpf;
 ess_cf = ess_bpf;
-% ess_lin = ess_bpf;
-% ess_sp = ess_bpf;
+ess_lin = ess_bpf;
+ess_sp = ess_bpf;
 
 l_cf = zeros(N*J_cf, K);
+l_lin = l_cf;
+l_sp = l_cf;
 
 r_bpf = zeros(1, N, K);
 r_cf1 = r_bpf;
 r_gf = r_bpf;
 r_pfpf = r_bpf;
 r_cf = r_bpf;
-% r_lin = r_bpf;
-% r_sp = r_bpf;
+r_lin = r_bpf;
+r_sp = r_bpf;
 
 t_bpf = zeros(1, K);
 t_cf1 = t_bpf;
@@ -237,8 +250,8 @@ t_gf = t_bpf;
 t_pfpf = t_bpf;
 t_cf = t_bpf;
 t_grid = t_bpf;
-% t_lin = t_bpf;
-% t_sp = t_bpf;
+t_lin = t_bpf;
+t_sp = t_bpf;
 
 use_grid = use_grid && dx == 1;
 if use_grid
@@ -266,9 +279,9 @@ for k = 1:K
         tic;
         [xhat_bpf(:, :, k), sys_bpf] = pf(model, ys(:, :, k), theta, J_bpf);
         t_bpf(k) = toc;
-        tmp = cat(2, sys_bpf(2:N+1).rstate);
-        ess_bpf(:, :, k) = cat(2, tmp.ess);
-        r_bpf(:, :, k) = cat(2, tmp.r);
+        qstates = cat(2, sys_bpf(2:N+1).qstate);
+        ess_bpf(:, :, k) = cat(2, qstates.ess);
+        r_bpf(:, :, k) = cat(2, qstates.r);
     end
     
     % One-step OID approximation
@@ -277,9 +290,10 @@ for k = 1:K
             tic;
             [xhat_cf1(:, :, k), sys_cf1] = pf(model, ys(:, :, k), theta, J_cf1, par_cf1);
             t_cf1(k) = toc;
-            tmp = cat(2, sys_cf1(2:N+1).rstate);
-            ess_cf1(:, :, k) = cat(2, tmp.ess);
-            r_cf1(:, :, k) = cat(2, tmp.r);
+            qstates = cat(2, sys_cf1(2:N+1).qstate);
+            rstates = cat(2, qstates.rstate);
+            ess_cf1(:, :, k) = cat(2, rstates.ess);
+            r_cf1(:, :, k) = cat(2, rstates.r);
         else
             tic;
             xhat_cf1(:, :, k) = pf(model, ys(:, :, k), theta, J_cf1, par_cf1);
@@ -292,9 +306,9 @@ for k = 1:K
         tic;
         [xhat_gf(:, :, k), sys_gf] = pf(model, ys(:, :, k), theta, J_gf, par_gf);
         t_gf(k) = toc;
-        tmp = cat(2, sys_gf(2:N+1).rstate);
-        ess_gf(:, :, k) = cat(2, tmp.ess);
-        r_gf(:, :, k) = cat(2, tmp.r);
+        qstates = cat(2, sys_gf(2:N+1).qstate);
+        ess_gf(:, :, k) = cat(2, qstates.ess);
+        r_gf(:, :, k) = cat(2, qstates.r);
     end
     
     % Particle flow PF
@@ -302,9 +316,9 @@ for k = 1:K
         tic;
         [xhat_pfpf(:, :, k), sys_pfpf] = pfpf(model, ys(:, :, k), theta, J_pfpf, par_pfpf);
         t_pfpf(k) = toc;
-        tmp = cat(2, sys_pfpf(2:N+1).rstate);
-        ess_pfpf(:, :, k) = cat(2, tmp.ess);
-        r_pfpf(:, :, k) = cat(2, tmp.r);
+        qstates = cat(2, sys_pfpf(2:N+1).qstate);
+        ess_pfpf(:, :, k) = cat(2, qstates.ess);
+        r_pfpf(:, :, k) = cat(2, qstates.r);
     end
     
     % SLR using closed-form expressions, L iterations
@@ -313,11 +327,12 @@ for k = 1:K
             tic;
             [xhat_cf(:, :, k), sys_cf] = pf(model, ys(:, :, k), theta, J_cf, par_cf);
             t_cf(k) = toc;
-            tmp = cat(2, sys_cf(2:N+1).rstate);
-            ess_cf(:, :, k) = cat(2, tmp.ess);
-            r_cf(:, :, k) = cat(2, tmp.r);
-            tmp = cat(1, sys_cf(2:N+1).qstate);
-            l_cf(:, k) = cat(1, tmp.l);
+            qstates = cat(2, sys_cf(2:N+1).qstate);
+            rstates = cat(2, qstates.rstate);
+            ess_cf(:, :, k) = cat(2, rstates.ess);
+            r_cf(:, :, k) = cat(2, rstates.r);
+            qjs = cat(1, qstates.qj);
+            l_cf(:, k) = cat(1, qjs.l);
         else
             tic;
             xhat_cf(:, :, k) = pf(model, ys(:, :, k), theta, J_cf, par_cf);
@@ -325,29 +340,43 @@ for k = 1:K
         end
     end
     
-%     % Taylor series approximation of SLR
-%     if use_lin
-%         tic;
-%         [xhat_lin(:, :, k), sys_lin] = pf(model, ys(:, :, k), theta, J_bpf/L, par_lin);
-%         t_lin(k) = toc;
-%         tmp = cat(2, sys_lin(2:N+1).rstate);
-%         ess_lin(:, :, k) = cat(2, tmp.ess);
-%         r_lin(:, :, k) = cat(2, tmp.r);
-%         tmp = cat(1, sys_lin(2:N+1).q);
-%         l_lin(:, k) = cat(1, tmp.l);
-%     end
-% 
-%     % SLR using sigma-points, L iterations
-%     if use_sp
-%         tic;
-%         [xhat_sp(:, :, k), sys_sp] = pf(model, ys(:, :, k), theta, J_bpf/L, par_sp);
-%         t_sp(k) = toc;
-%         tmp = cat(2, sys_sp(2:N+1).rstate);
-%         ess_sp(:, :, k) = cat(2, tmp.ess);
-%         r_sp(:, :, k) = cat(2, tmp.r);
-%         tmp = cat(1, sys_sp(2:N+1).q);
-%         l_sp(:, k) = cat(1, tmp.l);
-%     end
+    % Taylor series approximation of SLR
+    if use_lin
+        if J_cf < 5e3
+            tic;
+            [xhat_lin(:, :, k), sys_lin] = pf(model, ys(:, :, k), theta, J_cf, par_lin);
+            t_lin(k) = toc;
+            qstates = cat(2, sys_lin(2:N+1).qstate);
+            rstates = cat(2, qstates.rstate);
+            ess_lin(:, :, k) = cat(2, rstates.ess);
+            r_lin(:, :, k) = cat(2, rstates.r);
+            qjs = cat(1, qstates.qj);
+            l_lin(:, k) = cat(1, qjs.l);
+        else
+            tic;
+            xhat_lin(:, :, k) = pf(model, ys(:, :, k), theta, J_cf, par_lin);
+            t_lin(k) = toc;
+        end
+    end
+
+    % SLR using sigma-points, L iterations
+    if use_sp
+        if J_cf < 5e3
+            tic;
+            [xhat_sp(:, :, k), sys_sp] = pf(model, ys(:, :, k), theta, J_cf, par_sp);
+            t_sp(k) = toc;
+            qstates = cat(2, sys_sp(2:N+1).qstate);
+            rstates = cat(2, qstates.rstate);
+            ess_sp(:, :, k) = cat(2, rstates.ess);
+            r_sp(:, :, k) = cat(2, rstates.r);
+            qjs = cat(1, qstates.qj);
+            l_sp(:, k) = cat(1, qjs.l);
+        else
+            tic;
+            xhat_sp(:, :, k) = pf(model, ys(:, :, k), theta, J_cf, par_sp);
+            t_sp(k) = toc;
+        end
+    end
         
     %% Progress
     pbar(k, fh);
@@ -360,8 +389,8 @@ iNaN_cf1 = squeeze(isnan(xhat_cf1(1, N, :)));
 iNaN_gf = squeeze(isnan(xhat_gf(1, N, :)));
 iNaN_pfpf = squeeze(isnan(xhat_pfpf(1, N, :)));
 iNaN_cf = squeeze(isnan(xhat_cf(1, N, :)));
-% iNaN_lin = squeeze(isnan(xhat_lin(1, N, :)));
-% iNaN_sp = squeeze(isnan(xhat_sp(1, N, :)));
+iNaN_lin = squeeze(isnan(xhat_lin(1, N, :)));
+iNaN_sp = squeeze(isnan(xhat_sp(1, N, :)));
 
 e_rmse_grid = trmse(xhat_grid - xs);
 e_rmse_bpf = trmse(xhat_bpf(:, :, ~iNaN_bpf) - xs(:, :, ~iNaN_bpf));
@@ -369,8 +398,8 @@ e_rmse_cf1 = trmse(xhat_cf1(:, :, ~iNaN_cf1) - xs(:, :, ~iNaN_cf1));
 e_rmse_gf = trmse(xhat_gf(:, :, ~iNaN_gf) - xs(:, :, ~iNaN_gf));
 e_rmse_pfpf = trmse(xhat_pfpf(:, :, ~iNaN_pfpf) - xs(:, :, ~iNaN_pfpf));
 e_rmse_cf = trmse(xhat_cf(:, :, ~iNaN_cf) - xs(:, :, ~iNaN_cf));
-% e_rmse_lin = trmse(xhat_lin(:, :, ~iNaN_lin) - xs(:, :, ~iNaN_lin));
-% e_rmse_sp = trmse(xhat_sp(:, :, ~iNaN_sp) - xs(:, :, ~iNaN_sp));
+e_rmse_lin = trmse(xhat_lin(:, :, ~iNaN_lin) - xs(:, :, ~iNaN_lin));
+e_rmse_sp = trmse(xhat_sp(:, :, ~iNaN_sp) - xs(:, :, ~iNaN_sp));
 
 fprintf('\tRMSE\t\t\tTime\t\tResampling\tConvergence\tIterations\tESS\t\tESS (%%)\n');
 fprintf( ...
@@ -417,18 +446,22 @@ fprintf( ...
     mean(mean(ess_cf)), std(mean(ess_cf)), ...
     mean(mean(ess_cf/J_cf*100)), std(mean(ess_cf/J_cf*100)) ...
 );
-% fprintf( ...
-%     'LIN\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\t\t%.2f (%.2f)\t\t%.2f (%.2f)\n', ...
-%     mean(e_rmse_lin), std(e_rmse_lin), mean(t_lin), std(t_lin), ...
-%     mean(sum(r_lin(:, :, ~iNaN_lin))/N), std(sum(r_sp(:, :, ~iNaN_lin))/N), ...
-%     1-sum(iNaN_lin)/K, mean(l_lin), std(l_lin) ...
-% );
-% fprintf( ...
-%     'SP\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\t\t%.2f (%.2f)\t\t%.2f (%.2f)\n', ...
-%     mean(e_rmse_sp), std(e_rmse_sp), mean(t_sp), std(t_sp), ...
-%     mean(sum(r_sp(:, :, ~iNaN_sp))/N), std(sum(r_sp(:, :, ~iNaN_sp))/N), ...
-%     1-sum(iNaN_sp)/K, mean(l_sp), std(l_sp) ...
-% );
+fprintf( ...
+    'LIN\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\t\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f (%.2f)\n', ...
+    mean(e_rmse_lin), std(e_rmse_lin), mean(t_lin), std(t_lin), ...
+    mean(sum(r_lin(:, :, ~iNaN_lin))/N*100), std(sum(r_sp(:, :, ~iNaN_lin))/N*100), ...
+    1-sum(iNaN_lin)/K, mean(l_lin(:)), std(l_lin(:)), ...
+    mean(mean(ess_lin)), std(mean(ess_lin)), ...
+    mean(mean(ess_lin/J_cf*100)), std(mean(ess_lin/J_cf*100)) ...
+);
+fprintf( ...
+    'SP\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\t\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f (%.2f)\n', ...
+    mean(e_rmse_sp), std(e_rmse_sp), mean(t_sp), std(t_sp), ...
+    mean(sum(r_sp(:, :, ~iNaN_sp))/N), std(sum(r_sp(:, :, ~iNaN_sp))/N), ...
+    1-sum(iNaN_sp)/K, mean(l_sp(:)), std(l_sp(:)), ...
+    mean(mean(ess_sp)), std(mean(ess_sp)), ...
+    mean(mean(ess_sp/J_cf*100)), std(mean(ess_sp/J_cf*100)) ...
+);
 
 %% Plots
 % Relative ESS
@@ -436,9 +469,9 @@ figure(1); clf();
 plot(mean(ess_bpf(:, :, ~iNaN_bpf)/J_bpf, 3)); hold on; grid on;
 plot(mean(ess_cf1(:, :, ~iNaN_cf1)/J_cf1, 3));
 plot(mean(ess_gf(:, :, ~iNaN_gf)/(J_gf), 3));
-plot(mean(ess_cf(:, :, ~iNaN_cf)/(J_cf/L), 3));
-% plot(mean(ess_lin(:, :, ~iNaN_lin)/(J/L), 3));
-% plot(mean(ess_sp(:, :, ~iNaN_sp)/(J/L), 3));
+plot(mean(ess_cf(:, :, ~iNaN_cf)/(J_cf), 3));
+plot(mean(ess_lin(:, :, ~iNaN_lin)/(J_cf), 3));
+plot(mean(ess_sp(:, :, ~iNaN_sp)/(J_cf), 3));
 set(gca, 'YScale', 'log');
 xlabel('n'); ylabel('Relative ESS');
 legend('BPF', 'OID CF1', 'GF', 'ICE-CF', 'ICE-Taylor', 'ICE-SP');
@@ -450,8 +483,8 @@ plot(mean(ess_bpf(:, :, ~iNaN_bpf), 3)); hold on; grid on;
 plot(mean(ess_cf1(:, :, ~iNaN_cf1), 3));
 plot(mean(ess_gf(:, :, ~iNaN_gf), 3));
 plot(mean(ess_cf(:, :, ~iNaN_cf), 3));
-% plot(mean(ess_lin(:, :, ~iNaN_lin), 3));
-% plot(mean(ess_sp(:, :, ~iNaN_sp), 3));
+plot(mean(ess_lin(:, :, ~iNaN_lin), 3));
+plot(mean(ess_sp(:, :, ~iNaN_sp), 3));
 ylim([10, 1000]);
 set(gca, 'YScale', 'log');
 xlabel('n'); ylabel('ESS');
