@@ -63,8 +63,11 @@ function [xhat, sys] = pfpf(model, y, theta, J, par)
 % TODO:
 % * Code optimizations should be considered at some point (at least the
 %   no. of loops in the sampling function can be reduced.
-% * Enable choice of flow type (EDH/LEDH) through par.
-% * Integrate this into the `pf` function.
+% * Integrate this into the `pf` function
+%   - Break out the sampling functions (sample_edh() / sample_ledh())
+%   - The sampling functions need the previous sampler state as an input;
+%     needs a slight change in modification in the sample() interface in
+%     pf.
 
     %% Defaults
     narginchk(2, 5);
@@ -83,13 +86,12 @@ function [xhat, sys] = pfpf(model, y, theta, J, par)
         'ukf', [] ...
     );
     par = parchk(par, def);
-%     modelchk(model);
 
     %% Initialize
     % Sample initial particles
     x = model.px0.rand(J);
     lw = log(1/J)*ones(1, J);
-    P = repmat(model.px0.P, [1, 1, J]);
+    P = repmat(model.px0.cov(), [1, 1, J]);
     
     % Since we also store and return the initial state (in 'sys'), a dummy
     % (NaN) measurement is prepended to the measurement matrix so that we 
@@ -115,8 +117,7 @@ function [xhat, sys] = pfpf(model, y, theta, J, par)
         sys(1).x = x;
         sys(1).w = exp(lw);
         sys(1).alpha = 1:J;
-        sys(1).rstate = struct('r', false, 'ess', J);
-        sys(1).qstate = [];
+        sys(1).qstate = struct('r', false, 'ess', J);
     end
     xhat = zeros(dx, N-1);
     
@@ -124,12 +125,11 @@ function [xhat, sys] = pfpf(model, y, theta, J, par)
     for n = 2:N
         %% Update
         % (Re-)Sample
-        [alpha, lw, rstate] = par.resample(lw);
-        [xp, lqx, P, qstate] = sample_ledh(model, y(:, n), x(:, alpha), theta(:, n), lw, P(:, :, alpha), par);
+        [alpha, lqalpha, rstate] = par.resample(lw);
+        [xp, lqx, P] = sample_ledh(model, y(:, n), x(:, alpha), theta(:, n), lw(alpha), P(:, :, alpha), par);
         
         % Calculate and normalize weights
-        lv = calculate_incremental_weights_generic(model, y(:, n), xp, x(:, alpha), theta(:, n), lqx);
-        lw = lw+lv;
+        lw = calculate_weights(model, y(:, n), xp, alpha, lqx, lqalpha, x, lw, theta(:, n));
         lw = lw-max(lw);
         w = exp(lw);
         w = w/sum(w);
@@ -150,8 +150,7 @@ function [xhat, sys] = pfpf(model, y, theta, J, par)
             sys(n).x = x;
             sys(n).w = w;
             sys(n).alpha = alpha;
-            sys(n).rstate = rstate;
-            sys(n).qstate = qstate;
+            sys(n).qstate = rstate;
         end
     end
     
@@ -242,12 +241,12 @@ function [xp, lqx, P, qstate] = sample_ledh(model, y, x, theta, ~, P, par)
     [dx, J] = size(x);
     
     % Get function handles
-    f = model.px.m;
-    F = model.px.dm;
-    Q = model.px.P;
-    g = model.py.m;
-    G = model.py.dm;
-    R = model.py.P;
+    f = model.px.mean;
+    F = model.px.jacobian;
+    Q = model.px.cov();
+    g = model.py.mean;
+    G = model.py.jacobian;
+    R = model.py.cov;
     
     if isfield(model.py, 'ytr')
         y = model.py.ytr(y, theta);

@@ -16,7 +16,8 @@ function [xp, alpha, lqx, lqalpha, qstate] = sample_bootstrap(model, ~, x, lw, t
 % * `x`: Samples at x[n-1].
 % * `lw`: Log-weights of x[n-1].
 % * `theta`: Model parameters.
-% * `par`: Struct of additional parameters (resampling function).
+% * `par`: Struct of additional parameters:
+%   - `resample`: Resampling function (default: `resample_ess`).
 %
 % ## Output
 % * `xp`: The new samples x[n].

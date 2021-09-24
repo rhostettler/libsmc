@@ -64,7 +64,7 @@ kappa = 0;
 
 % Simulation parameters
 N = 100;            % Number of time samples (100)
-K = 10;            % Number of MC simulations (100)
+K = 100;            % Number of MC simulations (100)
 
 % Model parameters: Typical UNGM parameters except for the measurement
 % noise covariance (R), which is normally set to 1 (1e-4 makes it much more
@@ -75,14 +75,14 @@ m0 = 0;             % Initial state mean (0)
 P0 = 5;             % Initial state variance (5)
 
 % Algorithms to run
-use_gridf = false;      % Dense grid filter, very computationally expensive (false)
-use_bpf = true;         % Bootstrap particle filter
-use_gf = false;         % Gaussian flow (don't run this for 5e3, 10e3)
-use_pfpf = false;
-use_cf1 = true;         % One-step OID approximation (EKF/UKF-like)
-use_cf = true;          % Closed form iterated conditional expectations w/ posterior linearization (don't run this for 5e3, 10e3)
-use_lin = true;         % Sigma-point dito
-use_sp = true;          % Taylor series dito
+use_gridf = false;  % Dense grid filter, very computationally expensive (false)
+use_bpf = true;     % Bootstrap particle filter
+use_gf = true;      % Gaussian flow (don't run this for 5e3, 10e3)
+use_pfpf = true;
+use_cf1 = true;     % One-step OID approximation (EKF/UKF-like)
+use_cf = true;      % Closed form iterated conditional expectations w/ posterior linearization (don't run this for 5e3, 10e3)
+use_lin = true;     % Sigma-point dito
+use_sp = true;      % Taylor series dito
 
 % Other switches
 abc = false;        % If set to true, measurements are noise-free (false)
@@ -108,14 +108,6 @@ theta = 1:N;
 
 % Model struct
 model = model_nonlinear_gaussian(f, Q, g, R, m0, P0, Fx, Gx, true);
-% model.px0.m = m0;
-% model.px0.P = P0;
-% model.px.m = f;
-% model.px.dm = Fx;
-% model.px.P = Q;
-% model.py.m = g;
-% model.py.dm = Gx;
-% model.py.P = R;
 if uniform
     epsilon = sqrt(12*R)/2; % To match variance with Gaussian used previously
     model.py = struct( ...
@@ -128,16 +120,14 @@ end
 %% Sampling algorithms
 % Approximation of the optimal proposal using approximate Gaussian particle
 % flow
+par_gf_sampler = struct('L', L);
 par_gf = struct( ...
-    'sample', @(model, y, x, theta) sample_gaussian_flow(model, y, x, theta, f, @(x, theta) Q, g, Gx, dGxdx, @(x, theta) R, L), ...
-    'calculate_incremental_weights', @calculate_incremental_weights_flow ...
+    'sample', @(model, y, x, lw, theta) sample_gaussian_flow(model, y, x, lw, theta, dGxdx, par_gf_sampler), ...
+    'calculate_weights', @calculate_weights ...
 );
 
 % Particle flow particle filter
-par_pfpf = struct( ...
-    'L', 29, ...
-    'ukf', [alpha, beta, kappa] ...
-);
+par_pfpf = struct('L', 29); %, 'ukf', [alpha, beta, kappa]);
 
 % SLR using Taylor series approximation
 par_lin_sampler = struct( ...
@@ -268,8 +258,8 @@ for k = 1:K
         tic;
         [xhat_bpf(:, :, k), sys_bpf] = pf(model, ys(:, :, k), theta, J);
         t_bpf(k) = toc;
-        tmp = cat(2, sys_bpf(2:N+1).qstate);
-        ess_bpf(:, :, k) = cat(2, tmp.ess);
+        qstates = cat(2, sys_bpf(2:N+1).qstate);
+        ess_bpf(:, :, k) = cat(2, qstates.ess);
     end
     
     % Gaussian flow
@@ -277,8 +267,8 @@ for k = 1:K
         tic;
         [xhat_gf(:, :, k), sys_gf] = pf(model, ys(:, :, k), theta, J, par_gf);
         t_gf(k) = toc;
-        tmp = cat(2, sys_gf(2:N+1).rstate);
-        ess_gf(:, :, k) = cat(2, tmp.ess);
+        qstates = cat(2, sys_gf(2:N+1).qstate);
+        ess_gf(:, :, k) = cat(2, qstates.ess);
     end
     
     % PFPF
@@ -286,8 +276,8 @@ for k = 1:K
         tic;
         [xhat_pfpf(:, :, k), sys_pfpf] = pfpf(model, ys(:, :, k), theta, J, par_pfpf);
         t_pfpf(k) = toc;
-        tmp = cat(2, sys_pfpf(2:N+1).rstate);
-        ess_pfpf(:, :, k) = cat(2, tmp.ess);
+        qstates = cat(2, sys_pfpf(2:N+1).qstate);
+        ess_pfpf(:, :, k) = cat(2, qstates.ess);
     end
     
     % One-step OID approximation

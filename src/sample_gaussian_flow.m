@@ -1,8 +1,8 @@
-function [xp, lqx, qstate] = sample_gaussian_flow(model, y, x, theta, f, Q, g, Gx, dGxdx, R, L)
+function [xp, alpha, lqx, lqalpha, qstate] = sample_gaussian_flow(model, y, x, lw, theta, dGxdx, par) % f, Q, g, Gx, dGxdx, R, L)
 % # Gaussian particle flow OID approximation sampling
 % ## Usage
-% * `[xp, lqx] = sample_gaussian_flow(model, y, x, theta, f, Q, g, Gx, dGxdx, R)`
-% * `[xp, lqx, qstate] = sample_gaussian_flow(model, y, x, theta, f, Q, g, Gx, dGxdx, R, L)`
+% * `[xp, alpha, lqx, lqalpha] = sample_gaussian_flow(model, y, x, lw, theta, dGxdx)`
+% * `[xp, alpha, lqx, lqalpha, qstate] = sample_gaussian_flow(model, y, x, lw, theta, dGxdx, par)`
 %
 % ## Description
 % Gaussian particle flow importance sampling according to [1]. Approximates
@@ -20,15 +20,8 @@ function [xp, lqx, qstate] = sample_gaussian_flow(model, y, x, theta, f, Q, g, G
 % * `model`: State-space model struct.
 % * `y`: dy-times-1 measurement vector y[n].
 % * `x`: dx-times-J matrix of particles for the state x[n-1].
+% * `lw`: Log-weights of x[n-1].
 % * `theta`: dtheta-times-1 vector of other parameters.
-% * `f`: Mean of the dynamic model E{x[n] | x[n-1]} (function handle 
-%   `@(x, theta)`).
-% * `Q`: Covariance of the dynamic model Cov{x[n] | x[n-1]} (function
-%   handle `@(x, theta)`).
-% * `g`: Mean of the likelihood E{y[n] | x[n]} (function handle 
-%   `@(x, theta)`).
-% * `Gx`: Jacobian of the mean of the likelihood (function handle 
-%   `@(x, theta)`).
 % * `dGxdx`: 1-times-dx cell array of dy-times-dx matrices of second 
 %   derivatives where the nth cell is
 %
@@ -39,15 +32,18 @@ function [xp, lqx, qstate] = sample_gaussian_flow(model, y, x, theta, f, Q, g, G
 %                 |_                                       _|
 %
 %   (function handle `@(x, theta)`).
-% * `R`: Covariance of the likelihood Cov{y[n] | x[n]} (function handle
-%   `@(x, theta)`).
-% * `L`: Number of integration steps to use (default: `5`).
+% * `par`: Additional parameters:
+%   - `resample`: Resampling function (default: `resample_ess`).
+%   - `L`: Number of integration steps to use (default: `5`).
 % 
 % ## Output
-% * `xp`: New samples.
-% * `lqx`: 1-times-J vector of importance density evaluations at 
-%   `xp(:, j)`.
-% * `qstate`: Importance density state.
+% * `xp`: The new samples x[n].
+% * `alpha`: The ancestor indices of x[n].
+% * `lq`: 1-times-J vector of the importance density of the jth sample 
+%   `xp`.
+% * `lqalpha`: 1-times-J vector of the importance density of the jth
+%   ancestor index `alpha`.
+% * `qstate`: Sampling algorithm state information, see `resample_ess`.
 %
 % ## References
 % 1. P. Bunch and S. J. Godsill, "Approximations of the optimal importance 
@@ -76,24 +72,51 @@ function [xp, lqx, qstate] = sample_gaussian_flow(model, y, x, theta, f, Q, g, G
 %}
 
 % TODO:
-% * Add stochastic flow (with deterministic flow as default)
+% * Add stochastic flow as a parameter, with deterministic flow as default
 
     %% Defaults
-    narginchk(10, 11);
-    error('Broken due to changes in pf. Please fix resampling and weight handling.');
-    if nargin < 11 || isempty(L)
-        L = 5;
+    narginchk(6, 7);
+    if nargin < 7 || isempty(par)
+        par = struct();
     end
+    defaults = struct( ...
+        'L', 5, ...
+        'resample', @resample_ess ...
+    );
+    par = parchk(par, defaults);
+    
+    %% Preliminaries
+    % Flow parameters
+    L = par.L;
     lambda = 1/L;   % Integration step size
     gamma = 0;      % Deterministic flow
     
+    % Model shorthands
+    f = model.px.mean;
+    Q = model.px.cov;
+    if ~isa(Q, 'function_handle')
+        Q = @(x, theta) Q;
+    end
+    g = model.py.mean;
+    Gx = model.py.jacobian;
+    R = model.py.cov;
+    if ~isa(R, 'function_handle')
+        R = @(x, theta) R;
+    end
+
+    %% Resampling
+    % Sample ancestor indices (resampling)
+    [alpha, lqalpha, qstate] = par.resample(lw);
+    x = x(:, alpha);   
+        
     %% Gaussian flow
     % Initialize the log weights
     [dx, J] = size(x);
     xp = zeros(dx, J);
-    lv = zeros(1, J);    
+    lv = zeros(1, J);
+    lqx = zeros(1, J);
     depsilon = zeros(dx, 1);    % Stochastic increments; zero for deterministic flows
-    
+        
     for j = 1:J
         % Sample from prior
         xp(:, j) = model.px.rand(x(:, j), theta);
@@ -155,7 +178,7 @@ function [xp, lqx, qstate] = sample_gaussian_flow(model, y, x, theta, f, Q, g, G
             
             % Advance weights using (26)
             lvl = l/L*model.py.logpdf(y, xp(:, j), theta) + model.px.logpdf(xp(:, j), x(:, j), theta);
-            lv(:, j) = lv(:, j) + lvl - lvp + log(abs(det(Jxp)));
+            lv(j) = lv(j) + lvl - lvp + log(abs(det(Jxp)));
             
             % Store for next iteration
             mp = ml;
@@ -163,24 +186,9 @@ function [xp, lqx, qstate] = sample_gaussian_flow(model, y, x, theta, f, Q, g, G
             Pp = Pl;
             lvp = lvl;
         end
+        
+        % After L iterations, subtract the numerator to get the proposal
+        % weight
+        lqx(j) = lv(j) - lvl;
     end
-    
-    %% Proposal
-    % There is no proposal in the same sense as for other importance
-    % sampling schemes here. However, the particles and weights are
-    % advanced using an ODE. Hence, we misuse the 'importance density'
-    % output 'q' to contain the non-normalized incremental weights produced
-    % by the weight ODE. Note that this requires the
-    % 'calculate_incremental_weights_flow' to be used with 'pf'.
-    %
-    % TODO: This is abusive of the structure but works for now; we could
-    % actually 'fake' the importance density such that it could be
-    % evaluated but that is nonsense.
-    % => Actually, we'll modify the interface of the sample() function to
-    % also return the "lqx" along with the samples, and resample will
-    % return "lqalpha".
-    lqx = lv;
-    
-    % TODO: We also want to put something into qstate
-    qstate = [];
 end

@@ -42,14 +42,14 @@ function [xp, alpha, lqx, lqalpha, qstate] = sample_gaussian(model, y, x, lw, th
 % * `x`: dx-times-J matrix of particles for the state x[n-1].
 % * `lw`: Log-weights of x[n-1].
 % * `theta`: dtheta-times-1 vector of other parameters.
-% * `par`: 
-%     - `L`: Number of iterations (default: `1`).
-%     - `kappa`: Tail probability for gating (default: `1`).
-%     - `epsilon`: Threshold for KL-convergence criterion (default: 
-%       `1e-2`).
-%     - `slr`: Function to perform the statistical linear regression, e.g.
-%       `slr_cf` or `slr_sp` (function handle `@(mp, Pp, theta)`; default: 
-%       `@slr_sp`).
+% * `par`: Additional parameters:
+%   - `resample`: Resampling function (default: `resample_ess`).
+%   - `L`: Number of iterations (default: `1`).
+%   - `kappa`: Tail probability for gating (default: `1`).
+%   - `epsilon`: Threshold for KL-convergence criterion (default: `1e-2`).
+%   - `slr`: Function to perform the statistical linear regression, e.g.
+%     `slr_cf` or `slr_sp` (function handle `@(mp, Pp, theta)`; default: 
+%     `@slr_sp`).
 %
 % ## Output
 % * `xp`: The new samples x[n].
@@ -58,7 +58,8 @@ function [xp, alpha, lqx, lqalpha, qstate] = sample_gaussian(model, y, x, lw, th
 %   `xp`.
 % * `lqalpha`: 1-times-J vector of the importance density of the jth
 %   ancestor index `alpha`.
-% * `qstate`: Sampling algorithm state information, see `resample_ess`.
+% * `qstate`: Sampling algorithm state information (resampling and
+%   proposal).
 %
 % ## Authors
 % 2019-present -- Roland Hostettler

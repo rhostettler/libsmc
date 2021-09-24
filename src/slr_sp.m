@@ -19,8 +19,8 @@ function [A, b, Omega] = slr_sp(m, P, theta, g, R, Xi, wm, wc)
 % * `m`: Linearization density mean.
 % * `P`: Linearization density covariance.
 % * `theta`: dtheta-times-1 vector of other parameters.
-% * `g`: Mean of the likelihood (function handle @(m, P, theta)).
-% * `R`: Covariance of the likelihood (function hanlde @(m, P, theta)).
+% * `g`: Mean of the likelihood (function handle `@(m, P, theta)`).
+% * `R`: Covariance of the likelihood (function hanlde `@(m, P, theta)`).
 % * `Xi`: Unit sigma-points (default: cubature rule).
 % * `wm`: Mean sigma-point weights (default: cubature rule).
 % * `wc`: Covariance sigma-point weights (default: cubature rule).
