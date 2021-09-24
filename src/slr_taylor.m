@@ -53,6 +53,7 @@ function [A, b, Omega] = slr_taylor(m, P, theta, g, Gx, R)
 
 % TODO:
 % * Take g, Gx, R from model struct
+% * The equations for A, b, and Omega really reduce to G, 0, and R
 
     %% Defaults
     narginchk(6, 6);
@@ -61,7 +62,11 @@ function [A, b, Omega] = slr_taylor(m, P, theta, g, Gx, R)
     % Expectations w.r.t. linearization density
     my = g(m, theta);
     G = Gx(m, theta);
-    Py = G*P*G' + R(m, theta);
+    if isa(R, 'function_handle')
+        Py = G*P*G' + R(m, theta);
+    else
+        Py = G*P*G' + R;
+    end
     Pyx = G*P;
 
     % Calculate linearization w.r.t. linearization density

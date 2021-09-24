@@ -77,10 +77,12 @@ P0 = 5;             % Initial state variance (5)
 % Algorithms to run
 use_gridf = false;      % Dense grid filter, very computationally expensive (false)
 use_bpf = true;         % Bootstrap particle filter
-use_gf = true;         % Gaussian flow (don't run this for 5e3, 10e3)
-use_pfpf = true;
+use_gf = false;         % Gaussian flow (don't run this for 5e3, 10e3)
+use_pfpf = false;
 use_cf1 = true;         % One-step OID approximation (EKF/UKF-like)
 use_cf = true;          % Closed form iterated conditional expectations w/ posterior linearization (don't run this for 5e3, 10e3)
+use_lin = true;         % Sigma-point dito
+use_sp = true;          % Taylor series dito
 
 % Other switches
 abc = false;        % If set to true, measurements are noise-free (false)
@@ -105,15 +107,15 @@ Cyx = @(m, P, theta) 2*m*P/20;
 theta = 1:N;
 
 % Model struct
-model = model_nonlinear_gaussian(f, Q, g, R, m0, P0, true);
-model.px0.m = m0;
-model.px0.P = P0;
-model.px.m = f;
-model.px.dm = Fx;
-model.px.P = Q;
-model.py.m = g;
-model.py.dm = Gx;
-model.py.P = R;
+model = model_nonlinear_gaussian(f, Q, g, R, m0, P0, Fx, Gx, true);
+% model.px0.m = m0;
+% model.px0.P = P0;
+% model.px.m = f;
+% model.px.dm = Fx;
+% model.px.P = Q;
+% model.py.m = g;
+% model.py.dm = Gx;
+% model.py.P = R;
 if uniform
     epsilon = sqrt(12*R)/2; % To match variance with Gaussian used previously
     model.py = struct( ...
@@ -137,34 +139,47 @@ par_pfpf = struct( ...
     'ukf', [alpha, beta, kappa] ...
 );
 
-% % SLR using Taylor series approximation
-% slr_lin = @(m, P, theta) slr_taylor(m, P, theta, g, Gx, R);
-% par_lin = struct( ...
-%     'sample', @(model, y, x, theta) sample_gaussian(model, y, x, theta, f, @(x, theta) Q, slr_lin, L), ...
-%     'calculate_incremental_weights', @calculate_incremental_weights_generic ...
-% );
-% 
-% % SLR using sigma-points
-% Nx = size(m0, 1);
-% [wm, wc, c] = ut_weights(Nx, alpha, beta, kappa);
-% Xi = ut_sigmas(zeros(Nx, 1), eye(Nx), c);
-% slr_sp = @(mp, Pp, theta) slr_sp(mp, Pp, theta, g, @(x, theta) R, Xi, wm, wc);
-% par_sp = struct( ...
-%     'sample', @(model, y, x, theta) sample_gaussian(model, y, x, theta, f, @(x, theta) Q, slr_sp, L), ...
-%     'calculate_incremental_weights', @calculate_incremental_weights_generic... , ...
-% );
+% SLR using Taylor series approximation
+par_lin_sampler = struct( ...
+    'L', L, ...
+    'slr', @(m, P, theta) slr_taylor(m, P, theta, g, Gx, R) ...
+);
+par_lin = struct( ...
+    'sample', @(model, y, x, lw, theta) sample_gaussian(model, y, x, lw, theta, par_lin_sampler), ...
+    'calculate_weights', @calculate_weights ...
+);
+
+% SLR using sigma-points
+Nx = size(m0, 1);
+[wm, wc, c] = ut_weights(Nx, alpha, beta, kappa);
+Xi = ut_sigmas(zeros(Nx, 1), eye(Nx), c);
+par_sp_sampler = struct( ...
+    'L', L, ...
+    'slr', @(mp, Pp, theta) slr_sp(mp, Pp, theta, g, @(x, theta) R, Xi, wm, wc) ...
+);
+par_sp = struct( ...
+    'sample', @(model, y, x, lw, theta) sample_gaussian(model, y, x, lw, theta, par_sp_sampler), ...
+    'calculate_weights', @calculate_weights ...
+);
 
 % One-step closed form Gaussian OID approximation
-slr_cf = @(m, P, theta) slr_cf(m, P, theta, Ey, Cy, Cyx);
+par_cf1_sampler = struct( ...
+    'L', 1, ...
+    'slr', @(m, P, theta) slr_cf(m, P, theta, Ey, Cy, Cyx) ...
+);
 par_cf1 = struct( ...
-    'sample', @(model, y, x, theta) sample_gaussian(model, y, x, theta, f, @(x, theta) Q, slr_cf, 1), ...
-    'calculate_incremental_weights', @calculate_incremental_weights_generic ...
+    'sample', @(model, y, x, lw, theta) sample_gaussian(model, y, x, lw, theta, par_cf1_sampler), ...
+    'calculate_weights', @calculate_weights ...
 );
 
 % Proposed method
+par_cf_sampler = struct( ...
+    'L', L, ...
+    'slr', @(m, P, theta) slr_cf(m, P, theta, Ey, Cy, Cyx) ...
+);
 par_cf = struct( ...
-    'sample', @(model, y, x, theta) sample_gaussian(model, y, x, theta, f, @(x, theta) Q, slr_cf, L), ...
-    'calculate_incremental_weights', @calculate_incremental_weights_generic ...
+    'sample', @(model, y, x, lw, theta) sample_gaussian(model, y, x, lw, theta, par_cf_sampler), ...
+    'calculate_weights', @calculate_weights ...
 );
 
 %% Monte Carlo simulations
@@ -172,41 +187,48 @@ par_cf = struct( ...
 xs = zeros(1, N, K);
 ys = zeros(1, N, K);
 
+% MMSE
 xhat_grid = zeros(1, N, K);
 xhat_bpf = xhat_grid;
 xhat_gf = xhat_grid;
 xhat_pfpf = xhat_grid;
 xhat_cf1 = xhat_bpf;
 xhat_cf = xhat_bpf;
-% xhat_lin = xhat_bpf;
-% xhat_sp = xhat_bpf;
+xhat_lin = xhat_bpf;
+xhat_sp = xhat_bpf;
 
+% ESS
 ess_bpf = zeros(1, N, K);
 ess_gf = ess_bpf;
 ess_pfpf = ess_bpf;
 ess_cf1 = ess_bpf;
 ess_cf = ess_bpf;
-% ess_lin = ess_bpf;
-% ess_sp = ess_bpf;
+ess_lin = ess_bpf;
+ess_sp = ess_bpf;
 
+% Resampling
 r_bpf = zeros(1, N+1, K);
 r_gf = r_bpf;
 r_pfpf = r_bpf;
 r_cf1 = r_bpf;
 r_cf = r_bpf;
-% r_lin = r_bpf;
-% r_sp = r_bpf;
+r_lin = r_bpf;
+r_sp = r_bpf;
 
+% Computational time
 t_grid = zeros(1, K);
 t_bpf = t_grid;
 t_gf = t_grid;
 t_pfpf = t_grid;
 t_cf1 = t_bpf;
 t_cf = t_bpf;
-% t_lin = t_bpf;
-% t_sp = t_bpf;
+t_lin = t_bpf;
+t_sp = t_bpf;
 
+% No. of iterations
 l_cf = zeros(1, K);
+l_lin = l_cf;
+l_sp = l_cf;
 
 if use_gridf
     NGrid = length(xg);
@@ -246,7 +268,7 @@ for k = 1:K
         tic;
         [xhat_bpf(:, :, k), sys_bpf] = pf(model, ys(:, :, k), theta, J);
         t_bpf(k) = toc;
-        tmp = cat(2, sys_bpf(2:N+1).rstate);
+        tmp = cat(2, sys_bpf(2:N+1).qstate);
         ess_bpf(:, :, k) = cat(2, tmp.ess);
     end
     
@@ -273,8 +295,9 @@ for k = 1:K
         tic;
         [xhat_cf1(:, :, k), sys_cf1] = pf(model, ys(:, :, k), theta, J, par_cf1);
         t_cf1(k) = toc;
-        tmp = cat(2, sys_cf1(2:N+1).rstate);
-        ess_cf1(:, :, k) = cat(2, tmp.ess);
+        qstates = cat(2, sys_cf1(2:N+1).qstate);
+        rstates = cat(2, qstates.rstate);
+        ess_cf1(:, :, k) = cat(2, rstates.ess);
     end
    
     % Closed form, iterated conditional expectations
@@ -282,25 +305,36 @@ for k = 1:K
         tic;
         [xhat_cf(:, :, k), sys_cf] = pf(model, ys(:, :, k), theta, J, par_cf);
         t_cf(k) = toc;
-        tmp = cat(2, sys_cf(2:N+1).rstate);
-        ess_cf(:, :, k) = cat(2, tmp.ess);
-        tmp = cat(1, sys_cf(2:N+1).qstate);
-        l_cf(k) = mean(cat(1, tmp.l));
+        qstates = cat(2, sys_cf(2:N+1).qstate);
+        rstates = cat(2, qstates.rstate);
+        ess_cf(:, :, k) = cat(2, rstates.ess);
+        qjs = cat(2, qstates.qj);
+        l_cf(k) = mean(cat(1, qjs.l));
     end
     
-%     if 0
-%         % Taylor series
-%         tic;
-%         [xhat_lin(:, :, k), sys_lin] = pf(model, ys(:, :, k), theta, J, par_lin);
-%         t_lin(k) = toc;
-% 
-%         % Sigma-point approximation of SLR
-%         tic;
-%         [xhat_sp(:, :, k), sys_sp] = pf(model, ys(:, :, k), theta, J, par_sp);
-%         t_sp(k) = toc;
-%         tmp = cat(2, sys_sp(2:N+1).rstate);
-%         ess_sp(:, :, k) = cat(2, tmp.ess);
-%     end
+    if use_lin
+        % Taylor series
+        tic;
+        [xhat_lin(:, :, k), sys_lin] = pf(model, ys(:, :, k), theta, J, par_lin);
+        t_lin(k) = toc;
+        qstates = cat(2, sys_lin(2:N+1).qstate);
+        rstates = cat(2, qstates.rstate);
+        ess_lin(:, :, k) = cat(2, rstates.ess);
+        qjs = cat(2, qstates.qj);
+        l_lin(k) = mean(cat(1, qjs.l));
+    end
+
+    % Sigma-point approximation of SLR
+    if use_sp
+        tic;
+        [xhat_sp(:, :, k), sys_sp] = pf(model, ys(:, :, k), theta, J, par_sp);
+        t_sp(k) = toc;
+        qstates = cat(2, sys_sp(2:N+1).qstate);
+        rstates = cat(2, qstates.rstate);
+        ess_sp(:, :, k) = cat(2, rstates.ess);
+        qjs = cat(2, qstates.qj);
+        l_sp(k) = mean(cat(1, qjs.l));
+    end
 
     %% Progress
     pbar(k, fh);
@@ -314,8 +348,8 @@ iNaN_gf = squeeze(isnan(xhat_gf(1, N, :)));
 iNaN_pfpf = squeeze(isnan(xhat_pfpf(1, N, :)));
 iNaN_cf1 = squeeze(isnan(xhat_cf1(1, N, :)));
 iNaN_cf = squeeze(isnan(xhat_cf(1, N, :)));
-% iNaN_lin = squeeze(isnan(xhat_lin(1, N, :)));
-% iNaN_sp = squeeze(isnan(xhat_sp(1, N, :)));
+iNaN_lin = squeeze(isnan(xhat_lin(1, N, :)));
+iNaN_sp = squeeze(isnan(xhat_sp(1, N, :)));
 
 e_rmse_grid = trmse(xhat_grid(:, :, ~iNaN_grid) - xs(:, :, ~iNaN_grid));
 e_rmse_bpf = trmse(xhat_bpf(:, :, ~iNaN_bpf) - xs(:, :, ~iNaN_bpf));
@@ -323,62 +357,66 @@ e_rmse_gf = trmse(xhat_gf(:, :, ~iNaN_gf) - xs(:, :, ~iNaN_gf));
 e_rmse_pfpf = trmse(xhat_pfpf(:, :, ~iNaN_pfpf) - xs(:, :, ~iNaN_pfpf));
 e_rmse_cf1 = trmse(xhat_cf1(:, :, ~iNaN_cf1) - xs(:, :, ~iNaN_cf1));
 e_rmse_cf = trmse(xhat_cf(:, :, ~iNaN_cf) - xs(:, :, ~iNaN_cf));
-% e_rmse_lin = trmse(xhat_lin(:, :, ~iNaN_lin) - xs(:, :, ~iNaN_lin));
-% e_rmse_sp = trmse(xhat_sp(:, :, ~iNaN_sp) - xs(:, :, ~iNaN_sp));
+e_rmse_lin = trmse(xhat_lin(:, :, ~iNaN_lin) - xs(:, :, ~iNaN_lin));
+e_rmse_sp = trmse(xhat_sp(:, :, ~iNaN_sp) - xs(:, :, ~iNaN_sp));
 
-fprintf('\tRMSE\t\t\tTime\t\tResampling\tConvergence\tESS\n');
+fprintf('\tRMSE\t\t\tTime\t\tResampling\tConvergence\tESS\t\tIterations\n');
 fprintf( ...
-    'Grid\t%.2e (%.2e)\t%.2f (%.2f)\tn/a\t\tn/a\t\tn/a\n', ...
+    'Grid\t%.2e (%.2e)\t%.2f (%.2f)\tn/a\t\tn/a\t\tn/a\t\tn/a\n', ...
     mean(e_rmse_grid), std(e_rmse_grid), mean(t_grid), std(t_grid) ...
 );
 fprintf( ...
-    'BPF\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\t\t%.2f (%.2f)\n', ...
+    'BPF\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\t\t%.2f (%.2f)\tn/a\n', ...
     mean(e_rmse_bpf), std(e_rmse_bpf), mean(t_bpf), std(t_bpf), ...
     mean(sum(r_bpf(:, :, ~iNaN_bpf))/N), std(sum(r_bpf(:, :, ~iNaN_bpf))/N), ...
     1-sum(iNaN_bpf)/K, ...
     mean(mean(ess_bpf)), std(mean(ess_bpf)) ...
 );
 fprintf( ...
-    'GF\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\t\t%.2f (%.2f)\n', ...
+    'GF\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\t\t%.2f (%.2f)\tn/a\n', ...
     mean(e_rmse_gf), std(e_rmse_gf), mean(t_gf), std(t_gf), ...
     mean(sum(r_gf(:, :, ~iNaN_gf))/N), std(sum(r_gf(:, :, ~iNaN_gf))/N), ...
     1-sum(iNaN_gf)/K, ...
     mean(mean(ess_gf)), std(mean(ess_gf)) ...
 );
 fprintf( ...
-    'PFPF\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\t\t%.2f (%.2f)\n', ...
+    'PFPF\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\t\t%.2f (%.2f)\tn/a\n', ...
     mean(e_rmse_pfpf), std(e_rmse_pfpf), mean(t_pfpf), std(t_pfpf), ...
     mean(sum(r_pfpf(:, :, ~iNaN_pfpf))/N), std(sum(r_pfpf(:, :, ~iNaN_pfpf))/N), ...
     1-sum(iNaN_pfpf)/K, ...
     mean(mean(ess_pfpf)), std(mean(ess_pfpf)) ...
 );
 fprintf( ...
-    'CF1\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\t\t%.2f (%.2f)\n', ...
+    'CF1\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\t\t%.2f (%.2f)\tn/a\n', ...
     mean(e_rmse_cf1), std(e_rmse_cf1), mean(t_cf1), std(t_cf1), ...
     mean(sum(r_cf1(:, :, ~iNaN_cf1))/N), std(sum(r_cf1(:, :, ~iNaN_cf1))/N), ...
     1-sum(iNaN_cf1)/K, ...
     mean(mean(ess_cf1)), std(mean(ess_cf1)) ...
 );
 fprintf( ...
-    'CF\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\t\t%.2f (%.2f)\n', ...
+    'CF\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\t\t%.2f (%.2f)\t%.1f (%.1f)\n', ...
     mean(e_rmse_cf), std(e_rmse_cf), mean(t_cf), std(t_cf), ...
     mean(sum(r_cf(:, :, ~iNaN_cf))/N), std(sum(r_cf(:, :, ~iNaN_cf))/N), ...
     1-sum(iNaN_cf)/K, ...
-    mean(mean(ess_cf)), std(mean(ess_cf)) ...
+    mean(mean(ess_cf)), std(mean(ess_cf)), ...
+    mean(l_cf), std(l_cf) ...
 );
-% fprintf( ...
-%     'LIN\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\n', ...
-%     mean(e_rmse_lin), std(e_rmse_lin), mean(t_lin), std(t_lin), ...
-%     mean(sum(r_lin(:, :, ~iNaN_lin))/N), std(sum(r_sp(:, :, ~iNaN_lin))/N), ...
-%     1-sum(iNaN_lin)/K ...
-% );
-% fprintf( ...
-%     'SP\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\n', ...
-%     mean(e_rmse_sp), std(e_rmse_sp), mean(t_sp), std(t_sp), ...
-%     mean(sum(r_sp(:, :, ~iNaN_sp))/N), std(sum(r_sp(:, :, ~iNaN_sp))/N), ...
-%     1-sum(iNaN_sp)/K ...
-% );
-fprintf('Average number of iterations: %.1f (%.1f)\n', mean(l_cf), std(l_cf));
+fprintf( ...
+    'LIN\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\t\t%.2f (%.2f)\t%.1f (%.1f)\n', ...
+    mean(e_rmse_lin), std(e_rmse_lin), mean(t_lin), std(t_lin), ...
+    mean(sum(r_lin(:, :, ~iNaN_lin))/N), std(sum(r_sp(:, :, ~iNaN_lin))/N), ...
+    1-sum(iNaN_lin)/K, ...
+    mean(mean(ess_lin)), std(mean(ess_lin)), ...
+    mean(l_lin), std(l_lin) ...
+);
+fprintf( ...
+    'SP\t%.2e (%.2e)\t%.2f (%.2f)\t%.2f (%.2f)\t%.2f\t\t%.2f (%.2f)\t%.1f (%.1f)\n', ...
+    mean(e_rmse_sp), std(e_rmse_sp), mean(t_sp), std(t_sp), ...
+    mean(sum(r_sp(:, :, ~iNaN_sp))/N), std(sum(r_sp(:, :, ~iNaN_sp))/N), ...
+    1-sum(iNaN_sp)/K, ...
+    mean(mean(ess_sp)), std(mean(ess_sp)), ...
+    mean(l_sp), std(l_sp) ...
+);
 
 %% Plots
 % For plots of a specific MC run, use the last one since we only have the 
@@ -398,8 +436,8 @@ plot(xhat_gf(:, :, k));
 plot(xhat_pfpf(:, :, k));
 plot(xhat_cf1(:, :, k));
 plot(xhat_cf(:, :, k));
-% plot(xhat_lin(:, :, k));
-% plot(xhat_sp(:, :, k));
+plot(xhat_lin(:, :, k));
+plot(xhat_sp(:, :, k));
 legend('State', 'Bootstrap', 'GF', 'PFPF', 'CF1', 'ICE-CF', 'Linearized', 'Sigma-Points');
 title('MMSE');
 
@@ -410,7 +448,9 @@ plot(mean(ess_gf, 3));
 plot(mean(ess_pfpf, 3));
 plot(mean(ess_cf1, 3));
 plot(mean(ess_cf, 3));
-legend('Bootstrap', 'GF', 'PFPF', 'CF1', 'ICE-PF (CF)');
+plot(mean(ess_lin, 3));
+plot(mean(ess_sp, 3));
+legend('Bootstrap', 'GF', 'PFPF', 'CF1', 'ICE-PF (CF)', 'ICE-PF (LIN)', 'ICE-PF (SP)');
 xlabel('n'); ylabel('ESS');
 title('Effective sample size');
 
@@ -456,7 +496,7 @@ for n = 1:N
         % Get ancestor particle and proposal
         j = 1;
         xnj = sys_cf(n).x(:, sys_cf(n+1).alpha(j));
-        qj = sys_cf(n+1).qstate(j);
+        qj = sys_cf(n+1).qstate.qj(j);
 
         lpx = model.px.logpdf(xg, xnj, theta(:, n));
         px = exp(lpx);
@@ -467,8 +507,8 @@ for n = 1:N
         lp_oid = lpy + lpx;
         p_oid = exp(lp_oid)/(sum(exp(lp_oid))*mean(diff(xg)));
 
-        p_cf1 = normpdf(xg, qj.mp(2), sqrt(qj.Pp(:, :, 2)));
-        p_cf = normpdf(xg, qj.mp(qj.l+1), sqrt(qj.Pp(:, :, qj.l+1)));
+        p_cf1 = normpdf(xg, qj.mean(2), sqrt(qj.cov(:, :, 2)));
+        p_cf = normpdf(xg, qj.mean(qj.l+1), sqrt(qj.cov(:, :, qj.l+1)));
 
         figure(4); clf();
         plot(xg, p_oid); hold on;

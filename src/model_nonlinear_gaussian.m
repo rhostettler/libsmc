@@ -1,7 +1,8 @@
-function model = model_nonlinear_gaussian(f, Q, g, R, m0, P0, fast)
+function model = model_nonlinear_gaussian(f, Q, g, R, m0, P0, Fx, Gx, fast)
 % # Nonlinear Gaussian state-space Model
 % ## Usage
-% * `model = MODEL_NONLINEAR_GAUSSIAN(f, Q, g, R, m0, P0, fast)`
+% * `model = model_nonlinear_gaussian(f, Q, g, R, m0, P0)`
+% * `model = model_nonlinear_gaussian(f, Q, g, R, m0, P0, Fx, Gx, fast)`
 %
 % ## Description
 % Defines the model structure for nonlinear state-space models with
@@ -15,13 +16,17 @@ function model = model_nonlinear_gaussian(f, Q, g, R, m0, P0, fast)
 %
 % ## Input
 % * `f`: Mean function of the dynamic model. Function handle of the form 
-%   @(x, theta).
+%   `@(x, theta)`.
 % * `Q`: Process noise covariance, either a dx-times-dx matrix or a
-%   function handle of the form @(x, theta).
+%   function handle of the form `@(x, theta)`.
 % * `g`: Mean function of the observation model. Function handle of the 
-%   form @(x, theta).
+%   form `@(x, theta)`.
 % * `R`: Measurement noise covariance, either a dy-times-dy matrix or a
-%   function handle of the form @(x, theta).
+%   function handle of the form `@(x, theta)`.
+% * `Fx`: Jacobian of the dynamic model, function handle `@(x, theta)` 
+%   (optional).
+% * `Gx`: Jacobian of the measurement model, function handle `@(x, theta)`
+%   (optional).
 % * `fast`: Boolean flag set to 'true' if the transition density and
 %   likelihood (i.e., `f`, `Q`, `g`, and `R`) can evaluate whole dx-times-J
 %   particle matrices at once (default: false).
@@ -52,11 +57,17 @@ function model = model_nonlinear_gaussian(f, Q, g, R, m0, P0, fast)
 %}
 
 % TODO:
-% * Initial state sampling handling.
+% * The pdf of the initial state is not yet handled by `pdf_mvn`.
 
     %% Defaults
-    narginchk(6, 7);
-    if nargin < 7 || isempty(fast)
+    narginchk(6, 9);
+    if nargin < 7
+        Fx = [];
+    end
+    if nargin < 8
+        Gx = [];
+    end
+    if nargin < 9 || isempty(fast)
         fast = false;
     end
     
@@ -67,10 +78,14 @@ function model = model_nonlinear_gaussian(f, Q, g, R, m0, P0, fast)
     px0 = struct();
     px0.rand = @(J) m0*ones(1, J)+L0*randn(dx, J);
     px0.logpdf = @(x, theta) logmvnpdf(x.', m0.', P0).';
+    px0.mean = m0;
+    px0.cov = P0;
+    px0.fast = true;
+    dy = size(g(m0, []), 1);
     
     % State transition densiy, likelihood
-    px = pdf_mvn(dx, f, Q, fast);
-    py = pdf_mvn(dx, g, R, fast);
+    px = pdf_mvn(dx, f, Q, Fx, fast);
+    py = pdf_mvn(dy, g, R, Gx, fast);
     
     % Complete model
     model = struct('px0', px0, 'px', px, 'py', py);

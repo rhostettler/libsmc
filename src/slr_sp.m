@@ -51,20 +51,25 @@ function [A, b, Omega] = slr_sp(m, P, theta, g, R, Xi, wm, wc)
 %}
 
 % TODO:
-% * When Xi is specified, at least wm should be too (and vice-versa)
-% * Defaults for sigma-points are missing
 % * g, R should be taken from the model struct in the future
 
     %% Defaults
     narginchk(5, 8);
     if nargin < 6 || isempty(Xi)
-        error('Please specify the sigma-points.');
+        warning('lbismc:warning', 'No sigma-points specified, using cubature rule as default.');
+        dx = size(m, 1);
+        Xi = [sqrt(dx)*eye(dx), -sqrt(dx)*eye(dx)];
+        wm = 1/(2*dx)*ones(1, 2*dx);
+        wc = wm;
     end
-    if nargin < 7 || isempty(wm)
-        error('Please specify the sigma-point weights.');
+    if nargin == 6
+        warning('libsmc:warning', 'Sigma-points specified withouth weights, assigning uniform weights to all sigma-points.');
+        I = size(Xi, 2);
+        wm = 1/I*ones(1, I);
+        wc = wm;
     end
     if nargin < 8 || isempty(wc)
-        warning('libsmc:warning', 'Using the same weights for mean and covariance');
+        warning('libsmc:warning', 'No covariance weights specified, using the same weights for mean and covariance.');
         wc = wm;
     end
 

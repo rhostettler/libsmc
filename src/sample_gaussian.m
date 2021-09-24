@@ -1,8 +1,8 @@
-function [xp, lqx, qstate] = sample_gaussian(model, y, x, theta, slr, L, kappa, epsilon)
+function [xp, alpha, lqx, lqalpha, qstate] = sample_gaussian(model, y, x, lw, theta, par)
 % # Gaussian approximation to optimal importance density
 % ## Usage
-% * `[xp, lqx] = sample_gaussian(model, y, x, theta, slr)`
-% * `[xp, lqx, qstate] = sample_gaussian(model, y, x, theta, slr, L, kappa, epsilon)`
+% * `[xp, alpha] = sample_gaussian(model, y, x, lw, theta, slr)`
+% * `[xp, alpha, lqx, lqalpha, qstate] = sample_gaussian(model, y, x, lw, theta, slr, L, kappa, epsilon)`
 %
 % ## Description
 % Calculates the Gaussian approximation of the joint distribution
@@ -34,29 +34,31 @@ function [xp, lqx, qstate] = sample_gaussian(model, y, x, theta, slr, L, kappa, 
 %
 % Approximative statistical linear regression is used for calculating the 
 % moments of the joint approximation. The linearization method has to be
-% specified as a parameter.
+% specified as a parameter (the function handle `slr`).
 %
 % ## Input
 % * `model`: State-space model struct.
 % * `y`: dy-times-1 measurement vector y[n].
 % * `x`: dx-times-J matrix of particles for the state x[n-1].
+% * `lw`: Log-weights of x[n-1].
 % * `theta`: dtheta-times-1 vector of other parameters.
-% * `f`: Mean of the dynamic model E{x[n] | x[n-1]} (function handle 
-%   `@(x, theta)`).
-% * `Q`: Covariance of the dynamic model Cov{x[n] | x[n-1]} (function
-%   handle `@(x, theta)`).
-% * `slr`: Function to perform the statistical linear regression, e.g.
-%   `slr_cf` or `slr_sp` (function handle `@(mp, Pp, theta)`.
-% * `L`: Number of iterations (default: `1`).
-% * `kappa`: Tail probability for gating (default: `1`).
-% * `epsilon`: Threshold for KL-convergence criterion (default: `1e-2`).
+% * `par`: 
+%     - `L`: Number of iterations (default: `1`).
+%     - `kappa`: Tail probability for gating (default: `1`).
+%     - `epsilon`: Threshold for KL-convergence criterion (default: 
+%       `1e-2`).
+%     - `slr`: Function to perform the statistical linear regression, e.g.
+%       `slr_cf` or `slr_sp` (function handle `@(mp, Pp, theta)`; default: 
+%       `@slr_sp`).
 %
 % ## Output
-% * `xp`: New samples.
-% * `lqx`: 1-times-J vector of the importance density evaluated at 
-%   `xp(:, j)`.
-% * `qstate`: Array of structs where the jth entry corresponds to the 
-%   importance density of the jth particle.
+% * `xp`: The new samples x[n].
+% * `alpha`: The ancestor indices of x[n].
+% * `lq`: 1-times-J vector of the importance density of the jth sample 
+%   `xp`.
+% * `lqalpha`: 1-times-J vector of the importance density of the jth
+%   ancestor index `alpha`.
+% * `qstate`: Sampling algorithm state information, see `resample_ess`.
 %
 % ## Authors
 % 2019-present -- Roland Hostettler
@@ -78,32 +80,51 @@ function [xp, lqx, qstate] = sample_gaussian(model, y, x, theta, slr, L, kappa, 
 % with libsmc. If not, see <http://www.gnu.org/licenses/>.
 %}
 
-    %% Defaults
-    narginchk(7, 10);
-    error('Broken due to changes in pf. Please fix resampling and weight handling.');
-    [dx, J] = size(x);
-    dy = size(y, 1);
-    if nargin < 8 || isempty(L)
-        L = 1;
-    end
-    if nargin < 9 || isempty(kappa)
-        kappa = 1;
-    end
-    gamma = chi2inv(kappa, dy);
-    if nargin < 10 || isempty(epsilon)
-        epsilon = 1e-2;
-    end
+% TODO:
+% * Add the possibility to use this for APF-sampling
     
-    %% Sample and calculate incremental weights
+    %% Defaults
+    narginchk(5, 6);
+    if nargin < 6 || isempty(par)
+        par = struct();
+    end
+    defaults = struct( ...
+        'L', 1, ...                     % No. of iterations
+        'kappa', 1, ...                 % Probability for the detection of poor approximations
+        'epsilon', 1e-2, ...            % Convergence tolerance
+        'slr', @slr_sp, ...             % Use sigma-point-based SLR by default
+        'resample', @resample_ess ...   % Resampling function
+    );
+    par = parchk(par, defaults);
+    
+    %% Resampling   
+    % Sample ancestor indices (resampling)
+    [alpha, lqalpha, rstate] = par.resample(lw);
+    x = x(:, alpha);
+    
+    %% Sample
     % Preallocate
+    L = par.L;
+    [dx, J] = size(x);
     xp = zeros(dx, J);
     lqx = zeros(1, J);
-    qj = struct('fast', false, 'rand', @(y, x, theta) [], 'logpdf', @(xp, y, x, theta) [], 'mp', [], 'Pp', [], 'dkl', [], 'l', []);
-    qstate = repmat(qj, [1, J]);
+    qj = struct( ...
+        'fast', false, ...
+        'rand', @(y, x, theta) [], ...
+        'logpdf', @(xp, y, x, theta) [], ...
+        'mean', [], ...
+        'cov', [], ...
+        'dkl', [], ...
+        'l', [] ...
+    );
+    qstate = struct('rstate', rstate, 'qj', repmat(qj, [1, J]));
     dkls = zeros(1, L);
     mps = zeros(dx, L+1);
     Pps = zeros(dx, dx, L+1);
-
+        
+    % Divergence detection threshold
+    gamma = chi2inv(par.kappa, size(y, 1));
+    
     % Get mean and covariance functions
     f = model.px.mean;
     Q = model.px.cov;
@@ -113,7 +134,11 @@ function [xp, lqx, qstate] = sample_gaussian(model, y, x, theta, slr, L, kappa, 
         %% Calculate proposal
         % Initialize
         mx = f(x(:, j), theta);
-        Px = Q(x(:, j), theta);
+        if isa(Q, 'function_handle')
+            Px = Q(x(:, j), theta);
+        else
+            Px = Q;
+        end
         mp = mx;
         Pp = Px;
         Lp = chol(Pp, 'lower');
@@ -129,7 +154,7 @@ function [xp, lqx, qstate] = sample_gaussian(model, y, x, theta, slr, L, kappa, 
                         
             % Calculate linearization w.r.t. linearization density
             % y = A*x + b + nu, nu ~ N(0, Omega)
-            [A, b, Omega] = slr(mp, Pp, theta);
+            [A, b, Omega] = par.slr(mp, Pp, theta);
 
             % Moments of y of the joint approximation
             my = A*mx + b;
@@ -148,11 +173,11 @@ function [xp, lqx, qstate] = sample_gaussian(model, y, x, theta, slr, L, kappa, 
             [Lt, nd] = chol(Pt, 'lower');
             if nd || ((y - my)'/Py*(y - my) >= gamma)
                 done = true;
-%                 warning('libsmc:warning', 'Posterior approximation failed (l = %d), sampling from prior.', l);
+                warning('libsmc:warning', 'Posterior approximation failed (l = %d), sampling from prior.', l);
             else
                 % Change in KL divergence
                 dkls(l) = (trace(Pt\Pp) - log(det(Pp)) + log(det(Pt)) - dx + (mt - mp)'/Pt*(mt - mp))/2;
-                done = dkls(l) < epsilon;
+                done = dkls(l) < par.epsilon;
                 
                 mp = mt;
                 Pp = Pt;
@@ -168,17 +193,19 @@ function [xp, lqx, qstate] = sample_gaussian(model, y, x, theta, slr, L, kappa, 
         end
         
         %% Sample
+        % TODO: Adding mps, Pps, dkls is inconsistent with respect to the 
+        % pdf struct, but we'll keep it for now.
         qj = struct( ...
             'fast', false, ...
             'rand', @(y, x, theta) mp + Lp*randn(dx, 1), ...
             'logpdf', @(xp, y, x, theta) logmvnpdf(xp.', mp.', Pp).', ...
-            'mp', mps, ... % TODO: Adding mps, Pps, dkls is inconsistent with respect to the pdf struct, but we'll keep it for now.
-            'Pp', Pps, ...
+            'mean', mps, ...
+            'cov', Pps, ...
             'dkl', dkls, ...
             'l', l ...
         );
         xp(:, j) = qj.rand(y, x(:, j), theta);
         lqx(:, j) = qj.logpdf(xp(:, j), y, x(:, j), theta);
-        qstate(j) = qj;
+        qstate.qj(j) = qj;
     end
 end

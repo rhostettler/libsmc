@@ -1,20 +1,23 @@
-function py = pdf_mvn(dy, m, P, fast)
+function py = pdf_mvn(dy, m, P, dm, fast)
 % # Multivariate normal pdf structure
 % ## Usage
 % * `py = pdf_mvn(dy, m)`
-% * `py = pdf_mvn(dy, m, P, fast)`
+% * `py = pdf_mvn(dy, m, P, dm, fast)`
 %
 % ## Description
 % Initializes the pdf struct for a multivariate normal distribution with
-% mean m (mean function m(x, theta)) and covariance P (covariance function
-% P(x, theta).
+% mean `m` (mean function `m(x, theta)`) and covariance `P` (covariance 
+% function `P(x, theta)`). Additionally, the Jacobian of the mean, 
+% `dm(x, theta)`, may be specified.
 %
 % ## Input
 % * `dy`: Dimension of the random variable.
 % * `m`: Mean vector (dx-times-1). May be static or a function handle of
-%   the form @(x, theta).
+%   the form `@(x, theta)`.
 % * `P`: Covariance matrix (dx-times-dx). May be static or a function
 %   handle of the form @(x, theta). Default: `eye(dx)`.
+% * `dm`: Jacobian of the mean function, function handle of the form `@(x,
+%   theta)`.
 % * `fast`: `true` if `m(x, theta)` and `P(x, theta)` can evaluated for a
 %   complete dx-times-J particle matrix at once. Default: `false`.
 %
@@ -47,11 +50,14 @@ function py = pdf_mvn(dy, m, P, fast)
 %}
 
     %% Defaults
-    narginchk(2, 4);
+    narginchk(2, 5);
     if nargin < 3 || isempty(P)
         P = eye(dy);
     end
-    if nargin < 4 || isempty(fast)
+    if nargin < 4
+        dm = [];
+    end
+    if nargin < 5 || isempty(fast)
         fast = false;
     end
         
@@ -87,10 +93,11 @@ function py = pdf_mvn(dy, m, P, fast)
             'kappa', @(x, theta) (2*pi)^(-dy/2)*det(P(x, theta)).^(-1/2) ...
         );
     else
-        error('Something went wrong while initializing pdf struct, check your mean and covariance functions.');
+        error('libsmc:error', 'Something went wrong while initializing pdf struct, check your mean and covariance functions.');
     end
     
     %% Add mean and covariance functions
     py.mean = m;
+    py.jacobian = dm;
     py.cov = P;
 end
