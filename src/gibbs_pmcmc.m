@@ -1,4 +1,4 @@
-function [xs, thetas, sys] = gibbs_pmcmc(model, y, theta0, lambda, K, par)
+function [xs, thetas, sys] = gibbs_pmcmc(model, y, theta0, lambda, K, J, par)
 % # Particle Gibbs Markov chain Monte Carlo sampler
 % ## Usage
 % * `x = gibbs_pmcmc(model, y)`
@@ -34,6 +34,7 @@ function [xs, thetas, sys] = gibbs_pmcmc(model, y, theta0, lambda, K, par)
 %   `NaN`).
 % * `lambda`: Set of static (known) parameters (default: `[]`).
 % * `K`: No. of MCMC samples to generate (default: `10`).
+% * `J`: No. of particles to use in the particle filter (default: `100`).
 % * `par`: Additional parameters:
 %     - `Kburnin`: No. of burn-in samples (removed after sampling; default:
 %       `0`).
@@ -90,7 +91,7 @@ function [xs, thetas, sys] = gibbs_pmcmc(model, y, theta0, lambda, K, par)
 % TODO:
 % * There's still confusion about using both 'create_model' and theta in
 %   the different methods. That should be sorted out somehow by the model
-%   things
+%   things.
 %   => In practice, this is solved by the px0, px, py's which now take a
 %   generic set of parameters. Now we only have to concatenate these
 %   properly; but make sure to mention how these are concatenated in the
@@ -102,12 +103,10 @@ function [xs, thetas, sys] = gibbs_pmcmc(model, y, theta0, lambda, K, par)
 %   break a lot of things. **SHOULD BE SORTED OUT ASAP** (i.e., when
 %   rewriting the GP-PMCMC things. Also requires rewriting
 %   example_cpfas_rs_sv.m).
-% * Interface to sample_states should be something like (model, y, xt,
-%   theta) only. Also requires rewriting example_cpfas_rs_ungm.
 % * Update interface of sample_parameters
 
     %% Defaults
-    narginchk(2, 6);
+    narginchk(2, 7);
     if nargin < 3 || isempty(theta0)
         theta0 = NaN;
     end
@@ -117,7 +116,10 @@ function [xs, thetas, sys] = gibbs_pmcmc(model, y, theta0, lambda, K, par)
     if nargin < 5 || isempty(K)
         K = 10;
     end
-    if nargin < 6
+    if nargin < 6 || isempty(J)
+        J = 100;
+    end
+    if nargin < 7
         par = struct();
     end
     
@@ -125,7 +127,7 @@ function [xs, thetas, sys] = gibbs_pmcmc(model, y, theta0, lambda, K, par)
     def = struct(...
         'Kburnin', 0, ...
         'Kmixing', 1, ...
-        'sample_states', @(y, xtilde, theta, lambda) cpfas(model(theta(:, end)), y, xtilde, lambda), ...
+        'sample_states', @cpfas, ...
         'sample_parameters', [], ...
         'show_progress', [] ...
     );
@@ -156,11 +158,12 @@ function [xs, thetas, sys] = gibbs_pmcmc(model, y, theta0, lambda, K, par)
     %% MCMC sampling
     for k = 2:Kmcmc+1
         % Sample trajectory
-        if ~isempty(par.sample_states)    
+        if ~isempty(par.sample_states)
+            model_k = model(thetas(:, k-1));
             if return_sys
-                [x, sys{k}] = par.sample_states(y, x, thetas(:, 1:k-1), lambda);
+                [x, sys{k}] = par.sample_states(model_k, y, x, lambda, J);
             else
-                x = par.sample_states(y, x, thetas(:, 1:k-1), lambda);
+                x = par.sample_states(model_k, y, x, lambda, J);
             end
             xs(:, :, k) = x;
         else
@@ -168,7 +171,7 @@ function [xs, thetas, sys] = gibbs_pmcmc(model, y, theta0, lambda, K, par)
         end
         
         % Sample parameters
-        % TODO: Update interaface on sample_parameters
+        % TODO: Update interface on sample_parameters
         if ~isempty(par.sample_parameters)
             [thetas(:, k), state] = par.sample_parameters(y, lambda, xs(:, :, k), thetas(:, 1:k-1), model, state);
         end

@@ -26,7 +26,7 @@ function [xp, alpha, lqx, lqalpha, qstate] = sample_bootstrap(model, ~, x, lw, t
 %   `xp`.
 % * `lqalpha`: 1-times-J vector of the importance density of the jth
 %   ancestor index `alpha`.
-% * `qstate`: Sampling algorithm state information, see `resample_ess`.
+% * `qstate`: Sampling algorithm state information.
 %
 % ## Author
 % 2018-present -- Roland Hostettler <roland.hostettler@angstrom.uu.se>

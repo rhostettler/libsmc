@@ -15,7 +15,7 @@ Kburnin = 50;
 K = 100;
 Kmcmc = Kburnin+K;  % No. of MCMC samples
 L = J;              % No. of rejection sampling trials (J)
-P = 100;            % No. of MC simulations (100)
+P = 2;            % No. of MC simulations (100)
 
 %% Model
 dx = 1;
@@ -28,18 +28,18 @@ lambda = 1:N;
 f = @(x, lambda) 0.5*x + 25*x./(1+x.^2) + 8*cos(1.2*lambda);
 g = @(x, lambda) 0.05*x.^2;
 mod = model_nonlinear_gaussian(f, Q, g, R, m0, P0);
-model = @(theta) mod;           % TODO: This is the gibbs_pmcmc() curiosity that needs sorting out
+
+% TODO: This is a gibbs_pmcmc() curiosity that needs sorting out
+model = @(theta) mod;
 
 %% Algorithm parameters
-% Parameters for categorical sampling
-par = struct();
-par.sample_states = @(y, xtilde, theta, lambda) cpfas(model(theta), y, xtilde, lambda, J);
-
 % Parameters for rejection sampling
-par_cpf = struct();
-par_cpf.sample_ancestor_index = @(model, y, xt, x, lw, theta) sample_ancestor_index_rs(model, y, xt, x, lw, theta, L);
-par_rs = struct();
-par_rs.sample_states = @(y, xtilde, theta, lambda) cpfas(model(theta), y, xtilde, lambda, J, par_cpf);
+par_cpf = struct( ...
+    'sample_ancestor_index', @(model, y, xt, x, lw, theta) sample_ancestor_index_rs(model, y, xt, x, lw, theta, L) ...
+);
+par_rs = struct( ...
+    'sample_states', @(model, y, xtilde, lambda, J) cpfas(model, y, xtilde, lambda, J, par_cpf) ...
+);
 
 %% Simulate
 % Preallocate
@@ -61,43 +61,34 @@ fh = pbar(P);
 for p = 1:P
     %% Simulate system
     [xs(:, :, p), y(:, :, p)] = simulate_model(mod, lambda, N);
-    if 0
-    x = mod.px0.rand(1);
-    for n = 1:N
-        x = mod.px.rand(x, n);
-        y(:, n, p) = mod.py.rand(x, n);
-        xs(:, n, p) = x;
-    end
-    end
 
     %% Estimate
     % Standard
     tic;
-    [x_cs, ~, sys] = gibbs_pmcmc(model, y(:, :, p), [], lambda, Kmcmc, par);
+    [x_cs, ~, sys] = gibbs_pmcmc(model, y(:, :, p), [], lambda, Kmcmc, J);
     t_cs(p) = toc;
     x_cs = x_cs(:, 2:end, :);
     xhat_cs(:, :, p) = mean(x_cs(:, :, Kburnin+1:end), 3);
 
     % Rejection sampling
     tic;
-    [x_rs, ~, sys_rs] = gibbs_pmcmc(model, y(:, :, p), [], lambda, Kmcmc, par_rs);
+    [x_rs, ~, sys_rs] = gibbs_pmcmc(model, y(:, :, p), [], lambda, Kmcmc, J, par_rs);
     t_rs(p) = toc;
     x_rs = x_rs(:, 2:end, :);
     xhat_rs(:, :, p) = mean(x_rs(:, :, Kburnin+1:end), 3);
     
     %% Calculate statistics
     % Get acceptance rate and l statistics for rejection sampling
-    l_tmp = zeros(Kmcmc, N+1);
-    a_tmp = zeros(Kmcmc, N+1);
-    dgamma_tmp = zeros(Kmcmc, J, N+1);
+    l_tmp = zeros(Kmcmc, N);
+    a_tmp = zeros(Kmcmc, N);
+    dgamma_tmp = zeros(Kmcmc, J*N);
     for k = 1:Kmcmc
-        tmp = sys_rs{k};
-        for n = 2:N+1
-            state = tmp(n).state;
-            l_tmp(k, n) = state.l;
-            a_tmp(k, n) = state.accepted;
-            dgamma_tmp(k, :, n) = state.dgamma;
-        end
+        sys_rs_k = sys_rs{k};
+        qstates = cat(2, sys_rs_k(2:N+1).qstate);
+        astates = cat(2, qstates.astate);
+        l_tmp(k, :) = cat(2, astates.l);
+        a_tmp(k, :) = cat(2, astates.accepted);
+        dgamma_tmp(k, :) = cat(2, astates.dgamma);
     end
     
     dgamma_rs(p, :) = hist(dgamma_tmp(:), dgamma_grid);
@@ -164,4 +155,3 @@ figure(4); clf();
 gp_plot(dgamma_grid, mdgamma_rs, stddgamma_rs.^2, 2);
 set(gca, 'XScale', 'log');
 title('Distribution of acceptance probability error');
-

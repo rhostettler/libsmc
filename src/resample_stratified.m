@@ -8,10 +8,12 @@ function [alpha, lqalpha, state] = resample_stratified(lw)
 % Pr(alpha) = w(alpha).
 %
 % ## Input
-% * `w`: Probabilities.
+% * `lw`: Log-probabilities.
 %
 % ## Output
 % * `alpha`: The resampled indices.
+% * `lqalpha`: Probability of `alpha(j)`.
+% * `state`: Sampler state (empty).
 %
 % ## Authors
 % 2017-present -- Roland Hostettler <roland.hostettler@angstrom.uu.se>
