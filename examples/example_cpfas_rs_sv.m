@@ -9,7 +9,7 @@
 % Housekeeping
 clear variables;
 addpath(genpath('../src'));
-addpath ../../libgp/src ../../gp-pmcmc/lib
+addpath ../../libmgp/src ../../gp-pmcmc/lib
 
 %% Parameters
 % MCMC parameters
@@ -99,7 +99,7 @@ par_cs.show_progress = @(p, ~, ~) pbar(round(p*Kmcmc), fh);
 
 % Estimation
 tstart = tic;
-[xs_cs, thetas_cs, sys_cs] = gibbs_pmcmc(model, y, theta0, t, Kmcmc, par_cs);
+[xs_cs, thetas_cs] = gibbs_pmcmc(model, y, theta0, t, Kmcmc, J, par_cs);
 t_cs = toc(tstart);
 pbar(0, fh);
 
@@ -110,13 +110,14 @@ fprintf('Running PGAS w/ rejection sampling...\n');
 fh = pbar(Kmcmc);
 par_cpf = struct();
 par_cpf.sample_ancestor_index = @(model, y, xt, x, lw, theta) sample_ancestor_index_rs(model, y, xt, x, lw, theta, L);
-par_rs.sample_states = @(y, xtilde, theta, lambda) cpfas(model(theta), y, xtilde, lambda, J, par_cpf);
+par_rs.sample_states = @(model, y, xtilde, lambda, J) cpfas(model, y, xtilde, lambda, J, par_cpf);
 par_rs.sample_parameters = @(y, t, x, theta, model, state) sample_parameters(y, t, x, theta, model, samplers, state);
 par_rs.show_progress = @(p, ~, ~) pbar(round(p*Kmcmc), fh);
 
 % Estimation
 tstart = tic;
-[xs_rs, thetas_rs, sys_rs] = gibbs_pmcmc(model, y, theta0, t, Kmcmc, par_rs);
+[xs_rs, thetas_rs, sys_rs] = gibbs_pmcmc(model, y, theta0, t, Kmcmc, J, par_rs);
+% [xs_rs, thetas_rs] = gibbs_pmcmc(model, y, theta0, t, Kmcmc, J, par_rs);
 t_rs = toc(tstart);
 pbar(0, fh);
 
@@ -131,17 +132,16 @@ f_rs = smc_expectation(@(x) C*x, xs_rs(:, :, Kburnin+1:end));
 sigma2_rs = smc_expectation(@(x) (C*x - f_rs).^2, xs_rs(:, :, Kburnin+1:end));
 
 % Find rejection sampling statistics
-a_rs = zeros(Kmcmc, N+1);   % Stores the 'accepted' flag
-l_rs = zeros(Kmcmc, N+1);   % Stores the acceptance iteration 'l'
-dgamma_rs = zeros(Kmcmc, J, N+1);
+a_rs = zeros(Kmcmc, N);   % Stores the 'accepted' flag
+l_rs = zeros(Kmcmc, N);   % Stores the acceptance iteration 'l'
+dgamma_rs = zeros(Kmcmc, J*N);
 for k = 1:Kmcmc
-    tmp = sys_rs{k};
-    for n = 2:N+1
-        state = tmp(n).state;
-        a_rs(k, n) = state.accepted;
-        l_rs(k, n) = state.l;
-        dgamma_rs(k, :, n) = state.dgamma;
-    end
+    sys_rs_k = sys_rs{k};
+    qstates = cat(2, sys_rs_k(2:N+1).qstate);
+    astates = cat(2, qstates.astate);
+    a_rs(k, :) = cat(2, astates.accepted);
+    l_rs(k, :) = cat(2, astates.l);
+    dgamma_rs(k, :) = cat(2, astates.dgamma);
 end
 
 %% Performance

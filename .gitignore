@@ -5,6 +5,7 @@ examples/Savefiles
 examples/Save
 examples/Export
 examples/export_*
-src/psis
 *DS_Store*
 *.swp
+external/smcmc
+external/pfpf
