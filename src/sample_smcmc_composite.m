@@ -1,7 +1,7 @@
-function [xn, alpha, lq, qstate] = sample_smcmc_composite(model, y, x, ~, theta, par)
+function [xn, alpha, lqx, lqalpha, qstate] = sample_smcmc_composite(model, y, x, ~, theta, par)
 % # Sample from a composite sequential MCMC kernel
 % ## Usage
-% * `[xn, alpha, lq, qstate] = sample_smcmc_composite(model, y, x, lw, theta, par)`
+% * `[xn, alpha, lqx, lqalpha, qstate] = sample_smcmc_composite(model, y, x, lw, theta, par)`
 %
 % ## Description
 % Composite sequential Markov chain Monte Carlo kernel. In particular,
@@ -26,9 +26,12 @@ function [xn, alpha, lq, qstate] = sample_smcmc_composite(model, y, x, ~, theta,
 %   - `epsilon`: MALA integration step (default: 0.1).
 % 
 % ## Output
-% * `xn`: The new samples x[n].
+% * `xp`: The new samples x[n].
 % * `alpha`: The ancestor indices of x[n].
-% * `lq`: 1-times-J vector of the importance density of the jth sample.
+% * `lqx`: 1-times-J vector of the importance density of the jth sample 
+%   `xp`.
+% * `lqalpha`: 1-times-J vector of the importance density of the jth
+%   ancestor index `alpha`.
 % * `qstate`: Sampling algorithm state information.
 %
 % ## Author
@@ -155,7 +158,8 @@ function [xn, alpha, lq, qstate] = sample_smcmc_composite(model, y, x, ~, theta,
     j = 1+(par.Jburnin+1:par.Jmixing:Jmcmc);
     alpha = alpha(j);
     xn = xn(:, j);
-    lq = -log(J)*ones(1, J);
+    lqx = -log(J)*ones(1, J);
+    lqalpha = lqx;
     
     qstate = struct('rate_alpha', rate_alpha, 'rate_x', rate_x);
 end

@@ -1,7 +1,7 @@
-function [xn, alpha, lq, qstate] = sample_smcmc_prior(model, y, x, ~, theta, par)
-% # Sample from the prior (bootstrap) sequential MCMC kernel
+function [xn, alpha, lqx, lqalpha, qstate] = sample_smcmc_bootstrap(model, y, x, ~, theta, par)
+% # Sample from the bootstrap (prior) sequential MCMC kernel
 % ## Usage
-% * `[xn, alpha, lq, qstate] = sample_smcmc_prior(model, y, x, lw, theta, par)`
+% * `[xn, alpha, lq, qstate] = sample_smcmc_bootstrap(model, y, x, lw, theta, par)`
 %
 % ## Description
 % Prior (bootstrap) sequential Markov chain Monte Carlo kernel. Samples are
@@ -22,9 +22,12 @@ function [xn, alpha, lq, qstate] = sample_smcmc_prior(model, y, x, ~, theta, par
 %   - `Jmixing`: No. of mixing samples (default: 0).
 % 
 % ## Output
-% * `xn`: The new samples x[n].
+% * `xp`: The new samples x[n].
 % * `alpha`: The ancestor indices of x[n].
-% * `lq`: 1-times-J vector of the importance density of the jth sample.
+% * `lqx`: 1-times-J vector of the importance density of the jth sample 
+%   `xp`.
+% * `lqalpha`: 1-times-J vector of the importance density of the jth
+%   ancestor index `alpha`.
 % * `qstate`: Sampling algorithm state information.
 %
 % ## Author
@@ -103,7 +106,8 @@ function [xn, alpha, lq, qstate] = sample_smcmc_prior(model, y, x, ~, theta, par
     j = 1+(par.Jburnin+1:par.Jmixing:Jmcmc);
     alpha = alpha(j);
     xn = xn(:, j);
-    lq = -log(J)*ones(1, J);
+    lqx = -log(J)*ones(1, J);
+    lqalpha = lqx;
     
     qstate = struct('rate', naccept/Jmcmc);
 end

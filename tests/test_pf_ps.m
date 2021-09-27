@@ -49,6 +49,10 @@ model = model_lgss(F, Q, G, R, m0, P0);
 % model.px.loggrad = @(xp, x, theta) -Q\(xp - F*x);  % TODO: Add this to the model creator?
 % model.px.grad = @(xp, x, theta) -Q\(xp - F*x).*(ones(dx, 1)*model.px.logpdf(xp, x, theta));
 % model.py.loggrad = @(y, x, theta) G'/R*(y - G*x);
+model.px.loggradient = @(xp, x, theta) -Q\(xp - F*x);
+model.px.loghessian = @(xp, x, theta) -Q\eye(dx);
+model.py.loggradient = @(y, x, theta) G'/R*(y-G*x);
+model.py.loghessian = @(y, x, theta) -G'/R*G;
 
 % Model constructor for PMCMC
 % TODO: This should not be necessary in the end, but gibbs_pmcmc needs to 
@@ -77,6 +81,19 @@ par_fapf = struct( ...
     'calculate_weights', [] ...
 );
 
+% SMCMC w/ bootstrap kernel
+par_smcmc_bootstrap_sampler = struct('Jmixing', 2);
+par_smcmc_bootstrap = struct( ...
+    'sample', @(model, y, x, lw, theta) sample_smcmc_bootstrap(model, y, x, lw, theta, par_smcmc_bootstrap_sampler), ...
+    'calculate_weights', [] ...
+);
+
+% SMCMC w/ composite kernel
+par_smcmc_mala = struct( ...
+    'sample', @sample_smcmc_composite, ...
+    'calculate_weights', [] ...
+);
+
 % KSD smoother
 par_ksd = struct('smooth', @smooth_ksd);
 
@@ -89,7 +106,8 @@ m_kf = xs;
 xhat_bpf = xs;
 xhat_opt = xs;
 xhat_apf = xs;
-xhat_bsmcmc = xs;
+xhat_smcmc_bootstrap = xs;
+xhat_smcmc_mala = xs;
 
 % Smoothers: State estimate
 m_rts = xs;
@@ -102,7 +120,8 @@ t_kf = zeros(1, L);
 t_bpf = t_kf;
 t_opt = t_kf;
 t_apf = t_kf;
-t_bsmcmc = t_kf;
+t_smcmc_bootstrap = t_kf;
+t_smcmc_mala = t_kf;
 
 % Smoohters: Execution time
 t_rts = t_kf;
@@ -139,9 +158,14 @@ for l = 1:L
     
     % Independent MH Bootstrap SMCMC
     tic;
-%     [xhat_bsmcmc(:, :, l), sys_mhb] = smcmc(model, y(:, :, l), [], J);
-    t_bsmcmc(l) = toc;
-        
+    xhat_smcmc_bootstrap(:, :, l) = pf(model, y(:, :, l), [], J, par_smcmc_bootstrap);
+    t_smcmc_bootstrap(l) = toc;
+
+    % Composite (MALA) SMCMC
+    tic;
+    xhat_smcmc_mala(:, :, l) = pf(model, y(:, :, l), [], J, par_smcmc_mala);
+    t_smcmc_mala(l) = toc;
+    
     %% Smoothers
     if smooth
         % RTS smoother (requires EKF/UKF toolbox)
@@ -178,7 +202,8 @@ e_rmse_kf = trmse(m_kf - xs);
 e_rmse_bpf = trmse(xhat_bpf - xs);
 e_rmse_opt = trmse(xhat_opt - xs);
 e_rmse_apf = trmse(xhat_apf - xs);
-e_rmse_bsmcmc = trmse(xhat_bsmcmc - xs);
+e_rmse_smcmc_bootstrap = trmse(xhat_smcmc_bootstrap - xs);
+e_rmse_smcmc_mala = trmse(xhat_smcmc_mala - xs);
 
 % Smoothers
 e_rmse_rts = trmse(m_rts - xs);
@@ -210,7 +235,10 @@ fprintf('APF\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
     mean(e_rmse_apf), std(e_rmse_apf), mean(t_apf), std(t_apf) ...
 );
 fprintf('B-SMCMC\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
-    mean(e_rmse_bsmcmc), std(e_rmse_bsmcmc), mean(t_bsmcmc), std(t_bsmcmc) ...
+    mean(e_rmse_smcmc_bootstrap), std(e_rmse_smcmc_bootstrap), mean(t_smcmc_bootstrap), std(t_smcmc_bootstrap) ...
+);
+fprintf('M-SMCMC\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
+    mean(e_rmse_smcmc_mala), std(e_rmse_smcmc_mala), mean(t_smcmc_mala), std(t_smcmc_mala) ...
 );
 
 % Smoothers
@@ -237,7 +265,7 @@ for i = 1:2
     plot(m_kf(i, :));
     plot(xhat_bpf(i, :));
     plot(xhat_opt(i, :));
-    plot(xhat_bsmcmc(i, :));
+    plot(xhat_smcmc_bootstrap(i, :));
     xlabel('n'); ylabel('x[n]');
     legend('State', 'KF', 'BPF', 'OID', 'SMCMC');
     grid on;
@@ -251,6 +279,6 @@ kk = (1:L)/L;
 figure(3); clf();
 stairs(sort(e_rmse_kf), kk); hold on;
 stairs(sort(e_rmse_bpf), kk);
-stairs(sort(e_rmse_bsmcmc), kk);
+stairs(sort(e_rmse_smcmc_bootstrap), kk);
 % stairs(sort(e_rmse_cf), kk);
 legend('KF', 'BPF', 'SMCMC');
