@@ -1,4 +1,4 @@
-function [xp, alpha, lq, qstate] = sample_fapf(model, y, x, lw, theta)
+function [xp, alpha, lqx, lqalpha, qstate] = sample_fapf(model, y, x, lw, theta)
 % # Sample from the fully adapted importance density (LGSSM only)
 % ## Usage
 % * `[xp, alpha, lq, qstate] = sample_fapf(model, y, x, lw, theta)`
@@ -34,7 +34,10 @@ function [xp, alpha, lq, qstate] = sample_fapf(model, y, x, lw, theta)
 % ## Output
 % * `xp`: The new samples x[n].
 % * `alpha`: The ancestor indices of x[n].
-% * `lq`: 1-times-J vector of the importance density of the jth sample.
+% * `lqx`: 1-times-J vector of the importance density of the jth sample 
+%   `xp`.
+% * `lqalpha`: 1-times-J vector of the importance density of the jth
+%   ancestor index `alpha`.
 % * `qstate`: Sampling algorithm state information, see `resample_ess`.
 %
 % ## Author
@@ -56,6 +59,9 @@ function [xp, alpha, lq, qstate] = sample_fapf(model, y, x, lw, theta)
 % You should have received a copy of the GNU General Public License along 
 % with libsmc. If not, see <http://www.gnu.org/licenses/>.
 %}
+
+% TODO:
+% * Add qj to qstate.
 
     %% Defaults
     narginchk(5, 5);
@@ -86,7 +92,4 @@ function [xp, alpha, lq, qstate] = sample_fapf(model, y, x, lw, theta)
     % Sample state
     xp = m(:, alpha) + chol(P).'*randn(dx, J);
     lqx = logmvnpdf(xp.', m(:, alpha).', P).';
-    
-    % Importance density evaluated at {xp(j), alpha(j)}.
-    lq = lqx + lqalpha;
 end

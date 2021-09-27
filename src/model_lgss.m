@@ -1,7 +1,7 @@
 function model = model_lgss(F, Q, G, R, m0, P0)
 % # Linear Gaussian state-space model
 % ## Usage
-% * `model = MODEL_LGSSM(F, Q, G, R, m0, P0)`
+% * `model = model_lgssm(F, Q, G, R, m0, P0)`
 %
 % ## Description
 % Creates a model structure with the appropriate probabilistic description
@@ -87,11 +87,5 @@ function model = model_lgss(F, Q, G, R, m0, P0)
     py = pdf_mvn(dy, @(x, theta) G(theta)*x, @(~, theta) R(theta), true);
     
     % Complete model
-if 0
-    model = struct( ...
-        'F', F, 'Q', Q, 'G', G, 'R', R, 'm0', m0, 'P0', P0, ...
-        'px', px, 'py', py, 'px0', px0 ...
-    );
-end
     model = struct( 'px0', px0, 'px', px, 'py', py);
 end

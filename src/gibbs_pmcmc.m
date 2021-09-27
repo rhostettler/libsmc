@@ -2,7 +2,7 @@ function [xs, thetas, sys] = gibbs_pmcmc(model, y, theta0, lambda, K, J, par)
 % # Particle Gibbs Markov chain Monte Carlo sampler
 % ## Usage
 % * `x = gibbs_pmcmc(model, y)`
-% * `[x, theta, sys] = gibbs_pmcmc(model, y, theta0, lambda, K, par)`
+% * `[x, theta, sys] = gibbs_pmcmc(model, y, theta0, lambda, K, J, par)`
 %
 % ## Description
 % Particle Markov chain Monte Carlo Gibbs sampler for generating samples

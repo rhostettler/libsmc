@@ -25,9 +25,11 @@ addpath ../src;
 rng(2872);
 
 %% Parameters
-N = 100;        % No. of time samples
-J = 200;        % No. of particles
-L = 1;         % No. of Monte Carlo runs
+N = 100;            % No. of time samples
+J = 100;            % No. of particles
+L = 10;             % No. of Monte Carlo runs
+
+smooth = false;     % Run smoothers? N.B.: This will be fairly time consuming!
 
 %% Model
 m0 = zeros(2, 1);
@@ -39,10 +41,19 @@ F = [
 Q = 0.25*eye(2);
 G = [0.25, 0];
 R = 1;
+dx = 2;
 
 % Model struct
-model = model_lgssm(F, Q, G, R, m0, P0);
-model_pmcmc = @(theta) model;   % TODO: This should not be necessary in the end, but gibbs_pmcmc needs to be updated first.
+model = model_lgss(F, Q, G, R, m0, P0);
+
+% model.px.loggrad = @(xp, x, theta) -Q\(xp - F*x);  % TODO: Add this to the model creator?
+% model.px.grad = @(xp, x, theta) -Q\(xp - F*x).*(ones(dx, 1)*model.px.logpdf(xp, x, theta));
+% model.py.loggrad = @(y, x, theta) G'/R*(y - G*x);
+
+% Model constructor for PMCMC
+% TODO: This should not be necessary in the end, but gibbs_pmcmc needs to 
+% be updated first.
+model_pmcmc = @(theta) model;
 
 %% Optimal proposal
 Sn = G*Q*G' + R;
@@ -54,37 +65,52 @@ q.fast = true;
 q.rand = @(y, x, theta) mu(x, y) + LSigma*randn(size(x));
 q.logpdf = @(xp, y, x, theta) logmvnpdf(xp.', (mu(x, y)).', Sigma).';
 par_opt = struct( ...
-    'sample', @(model, y, x, theta) sample_generic(model, y, x, theta, q), ...
-    'calculate_incremental_weights', @calculate_incremental_weights_generic ...
+    'sample', @(model, y, x, lw, theta) sample_generic(model, y, x, lw, theta, q), ...
+    'calculate_weights', @calculate_weights ...
 );
 
+% Fully adapted auxiliary particle filter
+% N.B.: The fully adapted APF has uniform weights, hence, we don't have to
+% calculate these and set the calculate_weights function to empty.
+par_fapf = struct( ...
+    'sample', @sample_fapf, ...
+    'calculate_weights', [] ...
+);
+
+% KSD smoother
 par_ksd = struct('smooth', @smooth_ksd);
 
 %% Preallocate
 xs = zeros(size(m0, 1), N, L);
 y = zeros(1, N, L);
 
+% Filters: State estimate
 m_kf = xs;
 xhat_bpf = xs;
 xhat_opt = xs;
+xhat_apf = xs;
 xhat_bsmcmc = xs;
 
+% Smoothers: State estimate
 m_rts = xs;
 xhat_ksd = xs;
 xhat_ffbsi = xs;
 xhat_cpfas = xs;
 
+% Filter: Execution time
 t_kf = zeros(1, L);
 t_bpf = t_kf;
 t_opt = t_kf;
+t_apf = t_kf;
 t_bsmcmc = t_kf;
 
+% Smoohters: Execution time
 t_rts = t_kf;
 t_ksd = t_kf;
 t_ffbsi = t_kf;
 t_cpfas = t_kf;
 
-%% MC simulations
+%% Simulations
 fh = pbar(L);
 for l = 1:L
     %% Simulate System
@@ -96,7 +122,7 @@ for l = 1:L
     [m_kf(:, :, l), P_kf] = kf_loop(m0, P0, G, R, y(:, :, l), F, Q);
     t_kf(l) = toc;
     
-    % Bootstrap PF (indirect)
+    % Bootstrap PF
     tic;
     xhat_bpf(:, :, l) = pf(model, y(:, :, l), [], J);
     t_bpf(l) = toc;
@@ -106,32 +132,39 @@ for l = 1:L
     xhat_opt(:, :, l) = pf(model, y(:, :, l), [], J, par_opt);
     t_opt(l) = toc;
     
+    % Fully adapted auxiliary particle filter
+    tic;
+    xhat_apf(:, :, l) = pf(model, y(:, :, l), [], J, par_fapf);
+    t_apf(l) = toc;
+    
     % Independent MH Bootstrap SMCMC
     tic;
-    [xhat_bsmcmc(:, :, l), sys_mhb] = smcmc(model, y(:, :, l), [], J);
+%     [xhat_bsmcmc(:, :, l), sys_mhb] = smcmc(model, y(:, :, l), [], J);
     t_bsmcmc(l) = toc;
         
     %% Smoothers
-    % RTS smoother (requires EKF/UKF toolbox)
-    tic;
-    m_rts(:, :, l) = rts_smooth(m_kf(:, :, l), P_kf, F, Q);
-    t_rts(l) = toc;
+    if smooth
+        % RTS smoother (requires EKF/UKF toolbox)
+        tic;
+        m_rts(:, :, l) = rts_smooth(m_kf(:, :, l), P_kf, F, Q);
+        t_rts(l) = toc;
 
-    % Kronander-Schon-Dahlin smoother
-    tic;
-    [xhat_ksd(:, :, l), sys_ksd] = ps(model, y(:, :, l), [], 2*J, J, par_ksd);
-    t_ksd(l) = toc;
-    
-    % FFBSi smoother
-    tic;
-    [xhat_ffbsi(:, :, l), sys_ffbsi] = ps(model, y(:, :, l), [], 2*J, J);
-    t_ffbsi(l) = toc;
-    
-    % CPF-AS MCMC smoother
-    tic;
-    [x_cpfas, sys] = gibbs_pmcmc(model_pmcmc, y(:, :, l));
-    xhat_cpfas(:, :, l) = mean(x_cpfas(:, 2:end, :), 3);
-    t_cpfas(l) = toc;
+        % Kronander-Schon-Dahlin smoother
+        tic;
+        [xhat_ksd(:, :, l), sys_ksd] = ps(model, y(:, :, l), [], 2*J, J, par_ksd);
+        t_ksd(l) = toc;
+
+        % FFBSi smoother
+        tic;
+        [xhat_ffbsi(:, :, l), sys_ffbsi] = ps(model, y(:, :, l), [], 2*J, J);
+        t_ffbsi(l) = toc;
+
+        % CPF-AS MCMC smoother
+        tic;
+        [x_cpfas, sys] = gibbs_pmcmc(model_pmcmc, y(:, :, l), [], [], 20, J);
+        xhat_cpfas(:, :, l) = mean(x_cpfas(:, 2:end, :), 3);
+        t_cpfas(l) = toc;
+    end
     
     %% Progress
     pbar(l, fh);
@@ -144,6 +177,7 @@ e_rmse_none = trmse(xs);
 e_rmse_kf = trmse(m_kf - xs);
 e_rmse_bpf = trmse(xhat_bpf - xs);
 e_rmse_opt = trmse(xhat_opt - xs);
+e_rmse_apf = trmse(xhat_apf - xs);
 e_rmse_bsmcmc = trmse(xhat_bsmcmc - xs);
 
 % Smoothers
@@ -172,24 +206,29 @@ fprintf('BPF\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
 fprintf('OPT PF\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
     mean(e_rmse_opt), std(e_rmse_opt), mean(t_opt), std(t_opt) ...
 );
+fprintf('APF\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
+    mean(e_rmse_apf), std(e_rmse_apf), mean(t_apf), std(t_apf) ...
+);
 fprintf('B-SMCMC\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
     mean(e_rmse_bsmcmc), std(e_rmse_bsmcmc), mean(t_bsmcmc), std(t_bsmcmc) ...
 );
 
 % Smoothers
-fprintf('\nSmoohters:\n');
-fprintf('RTSS\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
-    mean(e_rmse_rts), std(e_rmse_rts), mean(t_rts), std(t_rts) ...
-);
-fprintf('CPF-AS\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
-    mean(e_rmse_cpfas), std(e_rmse_cpfas), mean(t_cpfas), std(t_cpfas) ...
-);
-fprintf('KSD-PS\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
-    mean(e_rmse_ksd), std(e_rmse_ksd), mean(t_ksd), std(t_ksd) ...
-);
-fprintf('FFBSi\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
-    mean(e_rmse_ffbsi), std(e_rmse_ffbsi), mean(t_ffbsi), std(t_ffbsi) ...
-);
+if smooth
+    fprintf('\nSmoohters\n');
+    fprintf('RTSS\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
+        mean(e_rmse_rts), std(e_rmse_rts), mean(t_rts), std(t_rts) ...
+    );
+    fprintf('CPF-AS\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
+        mean(e_rmse_cpfas), std(e_rmse_cpfas), mean(t_cpfas), std(t_cpfas) ...
+    );
+    fprintf('KSD-PS\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
+        mean(e_rmse_ksd), std(e_rmse_ksd), mean(t_ksd), std(t_ksd) ...
+    );
+    fprintf('FFBSi\t%.4f (%.2f)\t\t%.2e (%.2e)\n', ...
+        mean(e_rmse_ffbsi), std(e_rmse_ffbsi), mean(t_ffbsi), std(t_ffbsi) ...
+    );
+end
 
 %% Plots
 for i = 1:2
@@ -207,3 +246,11 @@ end
 
 % xxx = cat(3, sys_mhb(:).xf);
 % figure(); plot(squeeze(xxx(2, :, :)).');
+
+kk = (1:L)/L;
+figure(3); clf();
+stairs(sort(e_rmse_kf), kk); hold on;
+stairs(sort(e_rmse_bpf), kk);
+stairs(sort(e_rmse_bsmcmc), kk);
+% stairs(sort(e_rmse_cf), kk);
+legend('KF', 'BPF', 'SMCMC');

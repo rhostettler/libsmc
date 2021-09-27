@@ -22,7 +22,7 @@ function [xp, alpha, lqx, lqalpha, qstate] = sample_bootstrap(model, ~, x, lw, t
 % ## Output
 % * `xp`: The new samples x[n].
 % * `alpha`: The ancestor indices of x[n].
-% * `lq`: 1-times-J vector of the importance density of the jth sample 
+% * `lqx`: 1-times-J vector of the importance density of the jth sample 
 %   `xp`.
 % * `lqalpha`: 1-times-J vector of the importance density of the jth
 %   ancestor index `alpha`.
@@ -65,13 +65,13 @@ function [xp, alpha, lqx, lqalpha, qstate] = sample_bootstrap(model, ~, x, lw, t
     
     % Sample
     [dx, J] = size(x);
-    lqx = zeros(1, J);
     px = model.px;
     if px.fast
         xp = px.rand(x, theta);
         lqx = px.logpdf(xp, x, theta);
     else
         xp = zeros(dx, J);
+        lqx = zeros(1, J);
         for j = 1:J
             xp(:, j) = px.rand(x(:, j), theta);
             lqx(j) = px.logpdf(xp(:, j), x(:, j), theta);
