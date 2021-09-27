@@ -60,6 +60,7 @@ function [alpha, lw, state] = resample_psis(lw, par)
 % * Make this fit for APF-like interfaces. Needs to be done, of course.
 
     %% Defaults
+    error('Broken due to interface change in pf().');
     narginchk(1, 2);
     if nargin < 2
         par = struct();
@@ -80,8 +81,8 @@ function [alpha, lw, state] = resample_psis(lw, par)
     J = length(lw);
     alpha = 1:J;
     if r
-        w = exp(lw);
-        alpha = par.resample(w);
+%         w = exp(lw);
+        alpha = par.resample(lw);
         lw = log(1/J)*ones(1, J);
     end
     state = struct('r', r, 'khat', khat);

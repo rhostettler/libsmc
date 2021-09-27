@@ -62,7 +62,7 @@ function [beta, state] = sample_backward_simulation(model, xs, x, lw, theta)
 
         % Sample a particle index from the backward kernel to extend the
         % jth backward trajectory
-        ir = resample_stratified(wtilde);
+        ir = resample_stratified(log(wtilde));
         beta(j) = ir(randi(Jf, 1));
     end
 end

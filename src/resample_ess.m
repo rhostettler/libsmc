@@ -1,8 +1,8 @@
-function [alpha, lalpha, state] = resample_ess(lw, par)
+function [alpha, lqalpha, state] = resample_ess(lw, par)
 % # Effective sample size-based conditional resampling
 % ## Usage
-% * `[alpha, lalpha, state] = resample_ess(lw)`
-% * `[alpha, lalpha, state] = resample_ess(lw, par)`
+% * `[alpha, lqalpha, state] = resample_ess(lw)`
+% * `[alpha, lqalpha, state] = resample_ess(lw, par)`
 %
 % ## Description
 % Conditional resampling function using an estimate of the effecitve sample
@@ -66,12 +66,11 @@ function [alpha, lalpha, state] = resample_ess(lw, par)
     Jess = 1/sum(w.^2);
     r = (Jess < par.Jt);
     alpha = 1:J;
-    lalpha = log(1/J)*ones(1, J);
+    lqalpha = log(1/J)*ones(1, J);
     if r
         % ESS is too low: Sample according to the categorical distribution
         % defined by the sample weights w, alpha ~ Cat{w}
-        alpha = par.resample(w);
-        lalpha = lw(alpha);
+        [alpha, lqalpha] = par.resample(lw);
     end
     state = struct('r', r, 'ess', Jess);
 end

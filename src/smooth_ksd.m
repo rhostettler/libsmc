@@ -65,7 +65,7 @@ function [xhat, sys] = smooth_ksd(model, y, theta, Js, sys)
     py = model.py;
 
     %% Initialize backward recursion
-    ir = resample_stratified(sys(N).w);
+    ir = resample_stratified(log(sys(N).w));
     alpha = ir(randperm(Jf, Js));
     xs = sys(N).x(:, alpha);
     lw = log(sys(N).w(alpha));
@@ -90,11 +90,11 @@ function [xhat, sys] = smooth_ksd(model, y, theta, Js, sys)
         end
         v = exp(lv-max(lv));
         v = v/sum(v);
-        beta = resample_stratified(v);
+        beta = resample_stratified(log(v));
         xp = xs(:, beta);
         
         % Sample smoothed particles
-        ir = resample_stratified(sys(n).w);
+        ir = resample_stratified(log(sys(n).w));
         alpha = ir(randperm(Jf, Js));
         xs = sys(n).x(:, alpha);
         lw = log(sys(n).w(alpha));

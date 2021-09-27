@@ -102,7 +102,7 @@ function [alpha, state] = sample_ancestor_index_rs(model, y, xt, x, lw, theta, L
         ivtilde(~ivtilde) = 1;
         wtilde = exp(lvtilde-max(lvtilde));
         wtilde = wtilde/sum(wtilde);
-        tmp = resample_stratified(wtilde);
+        tmp = resample_stratified(log(wtilde));
         alpha = tmp(randi(J, 1));
         l = NaN;
     end

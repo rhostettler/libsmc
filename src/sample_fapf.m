@@ -80,8 +80,8 @@ function [xp, alpha, lq, qstate] = sample_fapf(model, y, x, lw, theta)
     lqalpha = lw + logmvnpdf((y*ones(1, J)).', (G*mp).', S).';
     qalpha = exp(lqalpha-max(lqalpha));
     qalpha = qalpha/sum(qalpha);
-    alpha = resample_stratified(qalpha);
-    lqalpha = log(qalpha(alpha));
+    lqalpha = log(qalpha);
+    [alpha, lqalpha] = resample_stratified(lqalpha);
             
     % Sample state
     xp = m(:, alpha) + chol(P).'*randn(dx, J);

@@ -97,7 +97,7 @@ function [shat, zhat, sys] = smooth_rbffbsi(model, y, theta, Js, sys, par)
 
     %% Initialize
     % Draw particles
-    ir = resample_stratified(sys(N).w);
+    ir = resample_stratified(log(sys(N).w));
     beta = ir(randperm(Jf, Js));
     ss = sys(N).x(:, beta);
     shat(:, N) = mean(ss, 2);
@@ -247,7 +247,7 @@ function [beta, state] = sample_backward_simulation(model, ss, s, lw, mz, Pz, la
         %% Sample
         vs = exp(lv-max(lv));
         vs = vs/sum(vs);
-        ir = resample_stratified(vs);
+        ir = resample_stratified(log(vs));
         beta(j) = ir(randi(Jf, 1));
     end
 end

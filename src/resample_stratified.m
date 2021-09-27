@@ -1,7 +1,7 @@
-function alpha = resample_stratified(w)
+function [alpha, lqalpha, state] = resample_stratified(lw)
 % # Stratified resampling
 % ## Usage
-% * `alpha = resample_stratified(w)`
+% * `alpha = resample_stratified(lw)`
 %
 % ## Description
 % Stratified resampling, returns randomized indices `alpha` such that
@@ -37,6 +37,9 @@ function alpha = resample_stratified(w)
 % * Get rid of the outer loop
 
     narginchk(1, 1);
+    state = [];
+    
+    w = exp(lw);
     [I, J] = size(w);
     w = w./(sum(w, 2)*ones(1, J));
     alpha = zeros(I, J);
@@ -55,4 +58,5 @@ function alpha = resample_stratified(w)
         end
         alpha(i, :) = alpha(i, randperm(J));
     end
+    lqalpha = lw(alpha);
 end

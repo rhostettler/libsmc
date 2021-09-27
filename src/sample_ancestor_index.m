@@ -39,6 +39,6 @@ function [alpha, state] = sample_ancestor_index(model, y, xtilde, x, lw, theta)
     lvtilde = calculate_ancestor_weights(model, y, xtilde, x, lw, theta);
     wtilde = exp(lvtilde-max(lvtilde));
     wtilde = wtilde/sum(wtilde);
-    tmp = resample_stratified(wtilde);
+    tmp = resample_stratified(log(wtilde));
     alpha = tmp(randi(J, 1));
 end

@@ -70,7 +70,7 @@ function [xhat, sys] = smooth_ffbsi(model, y, theta, Js, sys, par)
     theta = [NaN*size(theta, 1), theta];
     
     %% Initialize
-    ir = resample_stratified(sys(N).w);
+    ir = resample_stratified(log(sys(N).w));
     beta = ir(randperm(Jf, Js));
     xs = sys(N).x(:, beta);
     xhat(:, N) = mean(xs, 2);
