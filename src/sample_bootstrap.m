@@ -60,7 +60,7 @@ function [xp, alpha, lqx, lqalpha, qstate] = sample_bootstrap(model, ~, x, lw, t
 
     %% Sampling   
     % Sample ancestor indices (resampling)
-    [alpha, lqalpha, qstate] = par.resample(lw);
+    [alpha, lqalpha, rstate] = par.resample(lw);
     x = x(:, alpha);
     
     % Sample
@@ -77,4 +77,6 @@ function [xp, alpha, lqx, lqalpha, qstate] = sample_bootstrap(model, ~, x, lw, t
             lqx(j) = px.logpdf(xp(:, j), x(:, j), theta);
         end
     end
+    
+    qstate = struct('rstate', rstate, 'qj', repmat(model.px, [1, J]));
 end

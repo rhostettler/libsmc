@@ -259,7 +259,8 @@ for k = 1:K
         [xhat_bpf(:, :, k), sys_bpf] = pf(model, ys(:, :, k), theta, J);
         t_bpf(k) = toc;
         qstates = cat(2, sys_bpf(2:N+1).qstate);
-        ess_bpf(:, :, k) = cat(2, qstates.ess);
+        rstates = cat(2, qstates.rstate);
+        ess_bpf(:, :, k) = cat(2, rstates.ess);
     end
     
     % Gaussian flow

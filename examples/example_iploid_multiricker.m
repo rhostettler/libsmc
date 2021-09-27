@@ -280,8 +280,9 @@ for k = 1:K
         [xhat_bpf(:, :, k), sys_bpf] = pf(model, ys(:, :, k), theta, J_bpf);
         t_bpf(k) = toc;
         qstates = cat(2, sys_bpf(2:N+1).qstate);
-        ess_bpf(:, :, k) = cat(2, qstates.ess);
-        r_bpf(:, :, k) = cat(2, qstates.r);
+        rstates = cat(2, qstates.rstate);
+        ess_bpf(:, :, k) = cat(2, rstates.ess);
+        r_bpf(:, :, k) = cat(2, rstates.r);
     end
     
     % One-step OID approximation
